@@ -27,13 +27,15 @@ public enum PakReader {
     public static func readArchive(at url: URL) throws -> PakArchive {
         let data = try Data(contentsOf: url)
         let eocd = try readEOCD(in: data)
-        let entries = try readCentralDirectory(in: data, eocd: eocd)
+        let centralEntries = try readCentralDirectory(in: data, eocd: eocd)
+        let localEntries = try readLocalHeaders(in: data)
+        let entries = try mergeCentralEntries(centralEntries, with: localEntries)
 
         return PakArchive(
             url: url,
             data: data,
             entries: entries,
-            localEntries: [],
+            localEntries: localEntries,
             centralDirectoryOffset: eocd.centralDirectoryOffset,
             centralDirectorySize: eocd.centralDirectorySize,
             archiveCommentLength: eocd.commentLength,
@@ -173,6 +175,99 @@ public enum PakReader {
         }
 
         return entries
+    }
+
+    private static func readLocalHeaders(in data: Data) throws -> [PakEntry] {
+        var reader = BinaryReader(data: data)
+        var entries: [PakEntry] = []
+
+        while reader.offset + 4 <= data.count {
+            let headerOffset = reader.offset
+            let signature = try reader.readUInt32()
+            guard signature == ZipSignature.localFileHeader else {
+                break
+            }
+
+            let versionNeeded = try reader.readUInt16()
+            let flags = try reader.readUInt16()
+            let methodRaw = try reader.readUInt16()
+            guard let method = ZipCompressionMethod(rawValue: methodRaw) else {
+                throw PakReaderError.unsupportedCompressionMethod(methodRaw)
+            }
+            let dosTime = try reader.readUInt16()
+            let dosDate = try reader.readUInt16()
+            let crc32 = try reader.readUInt32()
+            let compressedSize = try reader.readUInt32()
+            let uncompressedSize = try reader.readUInt32()
+            let nameLength = try reader.readUInt16()
+            let extraLength = try reader.readUInt16()
+            let name = try CP437.decode(try reader.readBytes(count: Int(nameLength)))
+            try reader.skip(Int(extraLength))
+            let dataOffset = reader.offset
+            try reader.skip(Int(compressedSize))
+
+            entries.append(PakEntry(
+                name: name,
+                compressionMethod: method,
+                generalPurposeBitFlag: flags,
+                crc32: crc32,
+                compressedSize: compressedSize,
+                uncompressedSize: uncompressedSize,
+                versionNeeded: versionNeeded,
+                dosTime: dosTime,
+                dosDate: dosDate,
+                localHeaderOffset: UInt32(headerOffset),
+                dataOffset: dataOffset,
+                localExtraFieldLength: extraLength,
+                centralVersionMadeBy: nil,
+                centralExtraFieldLength: nil,
+                centralFileCommentLength: nil,
+                centralExternalAttributes: nil
+            ))
+        }
+
+        return entries
+    }
+
+    private static func mergeCentralEntries(_ centralEntries: [PakEntry], with localEntries: [PakEntry]) throws -> [PakEntry] {
+        let localByOffset = Dictionary(uniqueKeysWithValues: localEntries.map { ($0.localHeaderOffset, $0) })
+
+        return try centralEntries.map { central in
+            guard let local = localByOffset[central.localHeaderOffset] else {
+                throw PakReaderError.signatureNotFound("local header for \(central.name)")
+            }
+            guard central.name == local.name,
+                  central.compressionMethod == local.compressionMethod,
+                  central.generalPurposeBitFlag == local.generalPurposeBitFlag,
+                  central.crc32 == local.crc32,
+                  central.compressedSize == local.compressedSize,
+                  central.uncompressedSize == local.uncompressedSize,
+                  central.versionNeeded == local.versionNeeded,
+                  central.dosTime == local.dosTime,
+                  central.dosDate == local.dosDate
+            else {
+                throw PakReaderError.signatureNotFound("matching local header metadata for \(central.name)")
+            }
+
+            return PakEntry(
+                name: central.name,
+                compressionMethod: central.compressionMethod,
+                generalPurposeBitFlag: central.generalPurposeBitFlag,
+                crc32: central.crc32,
+                compressedSize: central.compressedSize,
+                uncompressedSize: central.uncompressedSize,
+                versionNeeded: central.versionNeeded,
+                dosTime: central.dosTime,
+                dosDate: central.dosDate,
+                localHeaderOffset: central.localHeaderOffset,
+                dataOffset: local.dataOffset,
+                localExtraFieldLength: local.localExtraFieldLength,
+                centralVersionMadeBy: central.centralVersionMadeBy,
+                centralExtraFieldLength: central.centralExtraFieldLength,
+                centralFileCommentLength: central.centralFileCommentLength,
+                centralExternalAttributes: central.centralExternalAttributes
+            )
+        }
     }
 }
 
