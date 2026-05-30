@@ -38,12 +38,15 @@ initial.pak:
   stored entries: 8325
   deflated entries: 1983
   first entry: pak.load_list, stored
+  initial.cache_block position: 10294
+  writer-policy outliers: two deflated entries have 36-byte NTFS extra fields, 2026 DOS timestamps, central version made by 0x001F, and external attributes 0x20
 
 initial.repacked.pak:
   entries: 10308
   stored entries: 1
   deflated entries: 10307
   first entry: pak.load_list, stored
+  initial.cache_block position: 1
 ```
 
 ## Commands To Deliver
@@ -59,7 +62,7 @@ Do not implement future commands in this phase.
 
 ## Code Structure
 
-- Create `Package.swift`: Swift Package Manager manifest for one executable target and one test target.
+- Create `Package.swift`: Swift Package Manager manifest for one library target, one executable target, and one test target.
 - Create `Sources/SnowRunnerTool/CLI.swift`: manual command parsing and dispatch for Phase 1 commands.
 - Create `Sources/snowrunner-tool/main.swift`: executable process entry point that calls `CLI.run(arguments:)`.
 - Create `Sources/SnowRunnerTool/Pak/BinaryReader.swift`: bounds-checked little-endian reads from `Data`.
@@ -77,6 +80,100 @@ Do not implement future commands in this phase.
 - Create `Tests/SnowRunnerToolTests/PakReaderFixtureTests.swift`: fixture parser tests.
 - Create `Tests/SnowRunnerToolTests/PakVerifierFixtureTests.swift`: verifier behavior tests against both fixtures.
 - Create `Tests/SnowRunnerToolTests/CLITests.swift`: command parser tests using direct `CLI.run(arguments:)` calls.
+
+## Implementation Contracts
+
+These contracts remove ambiguity before coding starts.
+
+`PakEntry` must carry the metadata needed by both parser checks and verifier rules:
+
+```swift
+public struct PakEntry: Equatable {
+    public let name: String
+    public let compressionMethod: ZipCompressionMethod
+    public let generalPurposeBitFlag: UInt16
+    public let crc32: UInt32
+    public let compressedSize: UInt32
+    public let uncompressedSize: UInt32
+    public let versionNeeded: UInt16
+    public let dosTime: UInt16
+    public let dosDate: UInt16
+    public let localHeaderOffset: UInt32
+    public let dataOffset: Int
+    public let localExtraFieldLength: UInt16
+    public let centralVersionMadeBy: UInt16?
+    public let centralExtraFieldLength: UInt16?
+    public let centralFileCommentLength: UInt16?
+    public let centralExternalAttributes: UInt32?
+}
+```
+
+`PakArchive` must retain enough archive-level state for CLI output and verifier checks:
+
+```swift
+public struct PakArchive {
+    public let url: URL
+    public let data: Data
+    public let entries: [PakEntry]       // central directory order
+    public let localEntries: [PakEntry]  // local header order
+    public let centralDirectoryOffset: UInt32
+    public let centralDirectorySize: UInt32
+    public let archiveCommentLength: UInt16
+    public let isZip64: Bool
+}
+```
+
+`VerifierIssue` must be stable enough for tests and CLI output:
+
+```swift
+public struct VerifierIssue: Equatable {
+    public enum Severity: String {
+        case error
+        case warning
+    }
+
+    public let severity: Severity
+    public let code: String
+    public let message: String
+}
+```
+
+Verifier issue codes introduced in Phase 1:
+
+```text
+archive-comment
+central-local-mismatch
+content-crc-mismatch
+content-data-mismatch
+content-missing-entry
+content-size-mismatch
+crc-mismatch
+data-descriptor
+directory-entry
+entry-order
+external-attributes
+extra-field
+file-comment
+invalid-method
+invalid-timestamp
+missing-namespace
+non-load-list-stored-entry
+pak-load-list
+unsupported-flag
+version-made-by
+version-needed
+zip64
+```
+
+`verifyContentEquivalent(reference:candidate:)` means exact uncompressed content equivalence by internal path. It must ignore compression method, compressed size, local offsets, central directory offsets, and entry order. It must report issues when names differ, uncompressed sizes differ, CRCs differ, or decompressed bytes differ.
+
+SnowPakTool-compatible layout in this phase is defined from `fixtures/initial.repacked.pak`, not from generic ZIP sort order:
+
+- `pak.load_list` is entry `0` and is stored.
+- `initial.cache_block` is entry `1` and is deflated.
+- Every other entry is deflated.
+- Known top-level sections appear in this order when present: `[media]\classes`, `[media]\_dlc`, `[media]\_templates`, `[ssl_cache]`, `[strings]`.
+- `verify-snowpak-layout fixtures/initial.pak` must report `entry-order` because `initial.cache_block` appears at position `10294` instead of position `1`; it must also report `non-load-list-stored-entry` for the additional stored entries. It may additionally report `invalid-timestamp`, `extra-field`, `version-made-by`, and `external-attributes` for the two known writer-policy outlier entries.
 
 ## Implementation Tasks
 
@@ -293,7 +390,7 @@ enum ZipSignature {
     static let zip64Locator: UInt32 = 0x07064B50
 }
 
-enum ZipCompressionMethod: UInt16 {
+public enum ZipCompressionMethod: UInt16 {
     case stored = 0
     case deflated = 8
 }
@@ -588,7 +685,7 @@ Expected: FAIL with missing `validatePayloadCRCs` or missing inflater.
 
 Implement `PakInflater.inflateRawDeflate(_ compressed: Data, expectedSize: UInt32) throws -> Data` using zlib `inflateInit2` with negative window bits.
 
-Implement `PakReader.validatePayloadCRCs(in:)`:
+Implement `PakReader.readUncompressedPayload(entry:in:)` and `PakReader.validatePayloadCRCs(in:)`:
 
 - for stored entries, read compressed bytes directly as payload
 - for deflated entries, raw inflate compressed bytes
@@ -648,7 +745,7 @@ final class PakVerifierFixtureTests: XCTestCase {
     func testContentEquivalentPassesBetweenOriginalAndRepacked() throws {
         let original = try PakReader.readArchive(at: TestFixtures.initialPak)
         let repacked = try PakReader.readArchive(at: TestFixtures.initialRepackedPak)
-        let issues = PakVerifier.verifyContentEquivalent(reference: original, candidate: repacked)
+        let issues = try PakVerifier.verifyContentEquivalent(reference: original, candidate: repacked)
 
         XCTAssertTrue(issues.isEmpty, issues.map(\.message).joined(separator: "\n"))
     }
@@ -664,9 +761,63 @@ final class PakVerifierFixtureTests: XCTestCase {
         let archive = try PakReader.readArchive(at: TestFixtures.initialPak)
         let issues = try PakVerifier.verifySnowPakLayout(archive)
         let codes = Set(issues.map(\.code))
+        let expectedPolicyCodes: Set<String> = [
+            "entry-order",
+            "non-load-list-stored-entry",
+            "invalid-timestamp",
+            "extra-field",
+            "version-made-by",
+            "external-attributes"
+        ]
 
         XCTAssertFalse(issues.isEmpty)
-        XCTAssertTrue(codes.isSubset(of: ["entry-order", "non-load-list-stored-entry"]), issues.map(\.message).joined(separator: "\n"))
+        XCTAssertTrue(codes.isSubset(of: expectedPolicyCodes), issues.map(\.message).joined(separator: "\n"))
+        XCTAssertTrue(codes.contains("entry-order"))
+        XCTAssertTrue(codes.contains("non-load-list-stored-entry"))
+    }
+
+    func testContentEquivalentReportsSizeOrCrcMismatch() throws {
+        let original = try PakReader.readArchive(at: TestFixtures.initialPak)
+        let first = try XCTUnwrap(original.entries.first)
+        let changedFirst = PakEntry(
+            name: first.name,
+            compressionMethod: first.compressionMethod,
+            generalPurposeBitFlag: first.generalPurposeBitFlag,
+            crc32: first.crc32 ^ 0xFFFF,
+            compressedSize: first.compressedSize,
+            uncompressedSize: first.uncompressedSize,
+            versionNeeded: first.versionNeeded,
+            dosTime: first.dosTime,
+            dosDate: first.dosDate,
+            localHeaderOffset: first.localHeaderOffset,
+            dataOffset: first.dataOffset,
+            localExtraFieldLength: first.localExtraFieldLength,
+            centralVersionMadeBy: first.centralVersionMadeBy,
+            centralExtraFieldLength: first.centralExtraFieldLength,
+            centralFileCommentLength: first.centralFileCommentLength,
+            centralExternalAttributes: first.centralExternalAttributes
+        )
+        let candidate = original.replacingEntry(named: first.name, with: changedFirst)
+
+        let issues = try PakVerifier.verifyContentEquivalent(reference: original, candidate: candidate)
+        let codes = Set(issues.map(\.code))
+
+        XCTAssertTrue(codes.contains("content-crc-mismatch"), issues.map(\.message).joined(separator: "\n"))
+    }
+}
+
+private extension PakArchive {
+    func replacingEntry(named name: String, with replacement: PakEntry) -> PakArchive {
+        PakArchive(
+            url: url,
+            data: data,
+            entries: entries.map { $0.name == name ? replacement : $0 },
+            localEntries: localEntries.map { $0.name == name ? replacement : $0 },
+            centralDirectoryOffset: centralDirectoryOffset,
+            centralDirectorySize: centralDirectorySize,
+            archiveCommentLength: archiveCommentLength,
+            isZip64: isZip64
+        )
     }
 }
 ```
@@ -686,7 +837,7 @@ Expected: FAIL with missing `PakVerifier`.
 Implement:
 
 - `verifyBasic(_:) throws -> [VerifierIssue]`
-- `verifyContentEquivalent(reference:candidate:) -> [VerifierIssue]`
+- `verifyContentEquivalent(reference:candidate:) throws -> [VerifierIssue]`
 - `verifySnowPakLayout(_:) throws -> [VerifierIssue]`
 
 `verifyBasic` must check:
@@ -696,7 +847,6 @@ Implement:
 - no ZIP64
 - all local and central header general-purpose bit flags are `0`
 - no data descriptors
-- no extra fields
 - no directory entries
 - `pak.load_list` exists and is first
 - `pak.load_list` is stored
@@ -704,10 +854,18 @@ Implement:
 - only stored and deflated entries are present
 - all CRCs match decompressed bytes
 
+`verifyContentEquivalent` must check:
+
+- reference and candidate have the same internal path set
+- matching entries have the same uncompressed size
+- matching entries have the same CRC32
+- matching entries decompress to identical bytes
+- compression method, compressed size, offsets, and order do not affect equivalence
+
 `verifySnowPakLayout` must additionally check:
 
 - every non-`pak.load_list` entry is deflated
-- entry order is `pak.load_list` first, then case-insensitive ordinal sort by internal name
+- entry order follows the SnowPakTool-compatible fixture layout defined in `Implementation Contracts`: `pak.load_list` first, `initial.cache_block` second, then the known section order `[media]\classes`, `[media]\_dlc`, `[media]\_templates`, `[ssl_cache]`, `[strings]`
 - DOS timestamp is `1980-01-01 03:00:00`
 - extra-field lengths are zero
 - version needed is `0x14`
@@ -844,11 +1002,15 @@ Run:
 swift run snowrunner-tool pak verify-snowpak-layout fixtures/initial.pak
 ```
 
-Expected: command exits `1`, and reported issues are limited to:
+Expected: command exits `1`, and reported issue codes are limited to:
 
 ```text
 entry-order
 non-load-list-stored-entry
+invalid-timestamp
+extra-field
+version-made-by
+external-attributes
 ```
 
 - [ ] **Step 4: Checkpoint**
@@ -893,6 +1055,10 @@ Expected issue codes:
 ```text
 entry-order
 non-load-list-stored-entry
+invalid-timestamp
+extra-field
+version-made-by
+external-attributes
 ```
 
 Phase 1 is not complete until these acceptance results are fresh and verified.
@@ -904,7 +1070,7 @@ Phase 1 is not complete until these acceptance results are fresh and verified.
 - CP437 filenames: current fixtures are ASCII; implement ASCII fast path and explicit non-ASCII failure so the tool does not silently misdecode names.
 - Header consistency: compare central directory records against local headers for every entry before trusting verifier output.
 - Large fixture runtime: full CRC validation decompresses both PAKs; keep fast unit tests separate from fixture-heavy tests by using XCTest filters during development.
-- No git repository: the workspace currently may not be initialized as git; each task still defines a commit point, but implementation should record checkpoints if commits are unavailable.
+- Git checkpoint churn: the workspace is a git repository, so each task has a commit point; keep commits scoped to the files named by the task.
 
 ## Stop Rule
 
