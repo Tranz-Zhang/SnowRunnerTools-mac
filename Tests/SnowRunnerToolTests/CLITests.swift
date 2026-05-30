@@ -16,4 +16,27 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(result.exitCode, 2)
         XCTAssertTrue(result.stderr.contains("Unknown command"))
     }
+
+    func testInspectCommandReportsEntryCounts() {
+        let result = CLI.run(arguments: ["pak", "inspect", TestFixtures.initialPak.path])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("entries: 10308"))
+        XCTAssertTrue(result.stdout.contains("stored: 8325"))
+        XCTAssertTrue(result.stdout.contains("deflated: 1983"))
+    }
+
+    func testVerifyBasicCommandPassesFixture() {
+        let result = CLI.run(arguments: ["pak", "verify-basic", TestFixtures.initialPak.path])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("PASS"))
+    }
+
+    func testVerifySnowPakLayoutCommandReturnsFailureForOriginalPak() {
+        let result = CLI.run(arguments: ["pak", "verify-snowpak-layout", TestFixtures.initialPak.path])
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertTrue(result.stdout.contains("entry-order") || result.stdout.contains("non-load-list-stored-entry"))
+    }
 }

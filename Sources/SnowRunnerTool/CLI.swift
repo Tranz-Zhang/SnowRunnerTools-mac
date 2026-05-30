@@ -1,3 +1,5 @@
+import Foundation
+
 public struct CLIResult: Equatable {
     public let exitCode: Int32
     public let stdout: String
@@ -14,7 +16,7 @@ public enum CLI {
             return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown command: \(arguments[0])\n\n\(usage())")
         }
 
-        return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown pak command\n\n\(usage())")
+        return runPakCommand(Array(arguments.dropFirst()))
     }
 
     private static func usage() -> String {
@@ -27,5 +29,88 @@ public enum CLI {
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
         """
+    }
+
+    private static func runPakCommand(_ arguments: [String]) -> CLIResult {
+        guard let command = arguments.first else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown pak command\n\n\(usage())")
+        }
+
+        do {
+            switch command {
+            case "inspect":
+                guard arguments.count == 2 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak inspect <pak>\n")
+                }
+                let archive = try PakReader.readArchive(at: URL(fileURLWithPath: arguments[1]))
+                return CLIResult(exitCode: 0, stdout: inspectOutput(for: archive), stderr: "")
+
+            case "verify-basic":
+                guard arguments.count == 2 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak verify-basic <pak>\n")
+                }
+                let archive = try PakReader.readArchive(at: URL(fileURLWithPath: arguments[1]))
+                let issues = try PakVerifier.verifyBasic(archive)
+                return verifierResult(name: "verify-basic", issues: issues)
+
+            case "verify-content-equivalent":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak verify-content-equivalent <reference.pak> <candidate.pak>\n")
+                }
+                let reference = try PakReader.readArchive(at: URL(fileURLWithPath: arguments[1]))
+                let candidate = try PakReader.readArchive(at: URL(fileURLWithPath: arguments[2]))
+                let issues = try PakVerifier.verifyContentEquivalent(reference: reference, candidate: candidate)
+                return verifierResult(name: "verify-content-equivalent", issues: issues)
+
+            case "verify-snowpak-layout":
+                guard arguments.count == 2 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak verify-snowpak-layout <pak>\n")
+                }
+                let archive = try PakReader.readArchive(at: URL(fileURLWithPath: arguments[1]))
+                let issues = try PakVerifier.verifySnowPakLayout(archive)
+                return verifierResult(name: "verify-snowpak-layout", issues: issues)
+
+            default:
+                return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown pak command: \(command)\n\n\(usage())")
+            }
+        } catch {
+            return CLIResult(exitCode: 1, stdout: "", stderr: "\(error)\n")
+        }
+    }
+
+    private static func inspectOutput(for archive: PakArchive) -> String {
+        let storedCount = archive.entries.filter { $0.compressionMethod == .stored }.count
+        let deflatedCount = archive.entries.filter { $0.compressionMethod == .deflated }.count
+        let first = archive.entries.first
+
+        return """
+        entries: \(archive.entries.count)
+        stored: \(storedCount)
+        deflated: \(deflatedCount)
+        first entry: \(first?.name ?? "<none>")
+        first method: \(first?.compressionMethod.description ?? "<none>")
+        central directory offset: \(archive.centralDirectoryOffset)
+        central directory size: \(archive.centralDirectorySize)
+        """
+    }
+
+    private static func verifierResult(name: String, issues: [VerifierIssue]) -> CLIResult {
+        guard !issues.isEmpty else {
+            return CLIResult(exitCode: 0, stdout: "PASS \(name)\n", stderr: "")
+        }
+
+        let output = issues.map { "\($0.severity.rawValue) \($0.code): \($0.message)" }.joined(separator: "\n") + "\n"
+        return CLIResult(exitCode: 1, stdout: output, stderr: "")
+    }
+}
+
+private extension ZipCompressionMethod {
+    var description: String {
+        switch self {
+        case .stored:
+            return "stored"
+        case .deflated:
+            return "deflated"
+        }
     }
 }
