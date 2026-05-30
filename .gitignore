@@ -1,2 +1,3 @@
 SnowRunnerTools-win/
 **/.DS_Store
+.build/

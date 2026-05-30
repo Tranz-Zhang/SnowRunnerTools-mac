@@ -115,8 +115,13 @@ public enum PakVerifier {
     public static func verifySnowPakLayout(_ archive: PakArchive) throws -> [VerifierIssue] {
         var issues = try verifyBasic(archive)
 
-        for entry in archive.entries where entry.name != "pak.load_list" && entry.compressionMethod != .deflated {
-            issues.append(issue("non-load-list-stored-entry", "\(entry.name) must be deflated"))
+        let nonDeflatedEntries = archive.entries.filter { $0.name != "pak.load_list" && $0.compressionMethod != .deflated }
+        if !nonDeflatedEntries.isEmpty {
+            let examples = nonDeflatedEntries.prefix(5).map(\.name).joined(separator: ", ")
+            issues.append(issue(
+                "non-load-list-stored-entry",
+                "\(nonDeflatedEntries.count) entries other than pak.load_list must be deflated; examples: \(examples)"
+            ))
         }
 
         if !matchesSnowPakOrder(archive.entries) {
