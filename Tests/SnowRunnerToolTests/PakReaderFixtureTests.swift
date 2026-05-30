@@ -46,4 +46,16 @@ final class PakReaderFixtureTests: XCTestCase {
         XCTAssertEqual(first.compressedSize, 2_207_322)
         XCTAssertEqual(first.uncompressedSize, 2_207_322)
     }
+
+    func testOriginalPakAllEntryCrcsMatchPayloads() throws {
+        let archive = try PakReader.readArchive(at: TestFixtures.initialPak)
+
+        try PakReader.validatePayloadCRCs(in: archive)
+    }
+
+    func testRepackedPakAllEntryCrcsMatchPayloads() throws {
+        let archive = try PakReader.readArchive(at: TestFixtures.initialRepackedPak)
+
+        try PakReader.validatePayloadCRCs(in: archive)
+    }
 }

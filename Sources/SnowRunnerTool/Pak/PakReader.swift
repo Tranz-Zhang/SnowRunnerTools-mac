@@ -1,4 +1,5 @@
 import Foundation
+import zlib
 
 public enum PakReaderError: Error, CustomStringConvertible {
     case signatureNotFound(String)
@@ -6,6 +7,8 @@ public enum PakReaderError: Error, CustomStringConvertible {
     case unsupportedCompressionMethod(UInt16)
     case zip64Unsupported
     case multiDiskUnsupported
+    case invalidPayloadRange(String)
+    case crcMismatch(entry: String, expected: UInt32, actual: UInt32)
 
     public var description: String {
         switch self {
@@ -19,6 +22,10 @@ public enum PakReaderError: Error, CustomStringConvertible {
             return "ZIP64 archives are not supported"
         case .multiDiskUnsupported:
             return "Multi-disk ZIP archives are not supported"
+        case let .invalidPayloadRange(entry):
+            return "Invalid payload range for \(entry)"
+        case let .crcMismatch(entry, expected, actual):
+            return "CRC mismatch for \(entry): expected 0x\(String(expected, radix: 16)), got 0x\(String(actual, radix: 16))"
         }
     }
 }
@@ -41,6 +48,45 @@ public enum PakReader {
             archiveCommentLength: eocd.commentLength,
             isZip64: false
         )
+    }
+
+    public static func readUncompressedPayload(entry: PakEntry, in archive: PakArchive) throws -> Data {
+        let payload = try compressedPayload(entry: entry, in: archive)
+
+        switch entry.compressionMethod {
+        case .stored:
+            guard payload.count == Int(entry.uncompressedSize) else {
+                throw PakReaderError.invalidPayloadRange(entry.name)
+            }
+            return payload
+        case .deflated:
+            return try PakInflater.inflateRawDeflate(payload, expectedSize: entry.uncompressedSize)
+        }
+    }
+
+    public static func validatePayloadCRCs(in archive: PakArchive) throws {
+        for entry in archive.entries {
+            let payload = try readUncompressedPayload(entry: entry, in: archive)
+            let actual = payload.withUnsafeBytes { buffer in
+                crc32(0, buffer.bindMemory(to: Bytef.self).baseAddress, uInt(payload.count))
+            }
+            guard UInt32(actual) == entry.crc32 else {
+                throw PakReaderError.crcMismatch(entry: entry.name, expected: entry.crc32, actual: UInt32(actual))
+            }
+            guard payload.count == Int(entry.uncompressedSize) else {
+                throw PakReaderError.invalidPayloadRange(entry.name)
+            }
+        }
+    }
+
+    private static func compressedPayload(entry: PakEntry, in archive: PakArchive) throws -> Data {
+        let start = entry.dataOffset
+        let end = start + Int(entry.compressedSize)
+        guard start >= 0, end <= archive.data.count, start <= end else {
+            throw PakReaderError.invalidPayloadRange(entry.name)
+        }
+
+        return archive.data.subdata(in: start..<end)
     }
 
     private static func readEOCD(in data: Data) throws -> EndOfCentralDirectory {
