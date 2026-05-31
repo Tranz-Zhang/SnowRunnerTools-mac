@@ -19,4 +19,12 @@ public enum CP437 {
 
         return String(decoding: bytes, as: Unicode.ASCII.self)
     }
+
+    public static func encode(_ string: String) throws -> [UInt8] {
+        let bytes = Array(string.utf8)
+        for byte in bytes where byte > 0x7F {
+            throw CP437Error.nonASCIIByte(byte)
+        }
+        return bytes
+    }
 }

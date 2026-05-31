@@ -14,4 +14,16 @@ final class CP437Tests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains("non-ASCII CP437"))
         }
     }
+
+    func testCP437EncodeAcceptsASCII() throws {
+        let bytes = try CP437.encode("[media]\\classes\\truck.xml")
+
+        XCTAssertEqual(bytes, Array("[media]\\classes\\truck.xml".utf8))
+    }
+
+    func testCP437EncodeRejectsNonASCII() {
+        XCTAssertThrowsError(try CP437.encode("café.xml")) { error in
+            XCTAssertTrue(String(describing: error).contains("Unsupported non-ASCII"))
+        }
+    }
 }
