@@ -1,4 +1,5 @@
 import Foundation
+@testable import SnowRunnerTool
 
 enum TestFixtures {
     static let root = URL(fileURLWithPath: #filePath)
@@ -8,6 +9,18 @@ enum TestFixtures {
 
     static let initialPak = root.appendingPathComponent("fixtures/initial.pak")
     static let initialRepackedPak = root.appendingPathComponent("fixtures/initial.repacked.pak")
+
+    static func extractInitialCacheBlock(from pakURL: URL) throws -> URL {
+        let archive = try PakReader.readArchive(at: pakURL)
+        guard let entry = archive.entries.first(where: { $0.name == "initial.cache_block" }) else {
+            throw CacheBlockError.missingInitialCacheBlock
+        }
+
+        let output = try temporaryDirectory(named: "cache-block-fixture")
+            .appendingPathComponent("initial.cache_block")
+        try PakReader.readUncompressedPayload(entry: entry, in: archive).write(to: output)
+        return output
+    }
 }
 
 func temporaryDirectory(named name: String) throws -> URL {
