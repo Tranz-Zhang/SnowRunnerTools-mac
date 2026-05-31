@@ -25,6 +25,8 @@ public enum CLI {
 
         Commands:
           pak inspect <pak>
+          pak unpack <pak> <dir>
+          pak pack <dir> <pak>
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -44,6 +46,16 @@ public enum CLI {
                 }
                 let archive = try PakReader.readArchive(at: URL(fileURLWithPath: arguments[1]))
                 return CLIResult(exitCode: 0, stdout: inspectOutput(for: archive), stderr: "")
+
+            case "unpack":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak unpack <pak> <dir>\n")
+                }
+                let count = try PakUnpacker.unpack(
+                    archiveURL: URL(fileURLWithPath: arguments[1]),
+                    toDirectory: URL(fileURLWithPath: arguments[2], isDirectory: true)
+                )
+                return CLIResult(exitCode: 0, stdout: "unpacked \(count) entries\n", stderr: "")
 
             case "verify-basic":
                 guard arguments.count == 2 else {
