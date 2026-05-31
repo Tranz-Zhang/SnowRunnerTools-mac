@@ -60,8 +60,12 @@ public enum PakVerifier {
         }
 
         let names = archive.entries.map(\.name)
-        for namespace in ["[media]", "[strings]", "[ssl_cache]"] where !names.contains(where: { $0.hasPrefix(namespace) }) {
+        for namespace in ["[media]", "[ssl_cache]"] where !names.contains(where: { $0.hasPrefix(namespace) }) {
             issues.append(issue("missing-namespace", "Missing required namespace \(namespace)"))
+        }
+        if !names.contains(where: { $0.hasPrefix("[strings]") }),
+           !cacheBlockContainsExternalPrefix("[strings]/", in: archive) {
+            issues.append(issue("missing-namespace", "Missing required namespace [strings]"))
         }
 
         do {
@@ -166,6 +170,17 @@ public enum PakVerifier {
             && central.versionNeeded == local.versionNeeded
             && central.dosTime == local.dosTime
             && central.dosDate == local.dosDate
+    }
+
+    private static func cacheBlockContainsExternalPrefix(_ prefix: String, in archive: PakArchive) -> Bool {
+        guard let cacheBlockEntry = archive.entries.first(where: { $0.name == "initial.cache_block" }),
+              let payload = try? PakReader.readUncompressedPayload(entry: cacheBlockEntry, in: archive),
+              let cacheBlock = try? CacheBlockReader.readArchive(data: payload, url: nil)
+        else {
+            return false
+        }
+
+        return cacheBlock.entries.contains { $0.externalPath.hasPrefix(prefix) }
     }
 
     private static func matchesSnowPakOrder(_ entries: [PakEntry]) -> Bool {

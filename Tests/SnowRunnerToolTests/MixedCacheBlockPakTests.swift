@@ -29,4 +29,20 @@ final class MixedCacheBlockPakTests: XCTestCase {
         )
         XCTAssertTrue(cacheBlock.entries.contains { $0.externalPath.hasPrefix("[strings]/") })
     }
+
+    func testMixedCacheBlockPakPassesExistingPakVerifiers() throws {
+        let mixedRoot = try temporaryDirectory(named: "mixed-verifier-root")
+        let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("mixed-verifier.pak")
+
+        try PakUnpacker.unpack(archiveURL: TestFixtures.initialPak, toDirectory: mixedRoot)
+        try CacheBlockUnpacker.unpack(
+            cacheBlockURL: mixedRoot.appendingPathComponent("initial.cache_block"),
+            toDirectory: mixedRoot
+        )
+        try PakWriter.writeArchive(fromDirectory: mixedRoot, to: candidate, mixedCacheBlock: true)
+
+        let archive = try PakReader.readArchive(at: candidate)
+        XCTAssertTrue(try PakVerifier.verifyBasic(archive).isEmpty)
+        XCTAssertTrue(try PakVerifier.verifySnowPakLayout(archive).isEmpty)
+    }
 }
