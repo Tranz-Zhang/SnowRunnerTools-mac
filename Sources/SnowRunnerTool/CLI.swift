@@ -57,6 +57,16 @@ public enum CLI {
                 )
                 return CLIResult(exitCode: 0, stdout: "unpacked \(count) entries\n", stderr: "")
 
+            case "pack":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak pack <dir> <pak>\n")
+                }
+                let count = try PakWriter.writeArchive(
+                    fromDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true),
+                    to: URL(fileURLWithPath: arguments[2])
+                )
+                return CLIResult(exitCode: 0, stdout: "packed \(count) entries\n", stderr: "")
+
             case "verify-basic":
                 guard arguments.count == 2 else {
                     return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak verify-basic <pak>\n")

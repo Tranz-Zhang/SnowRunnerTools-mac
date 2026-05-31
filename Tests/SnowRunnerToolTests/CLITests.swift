@@ -39,4 +39,17 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(result.exitCode, 1)
         XCTAssertTrue(result.stdout.contains("entry-order") || result.stdout.contains("non-load-list-stored-entry"))
     }
+
+    func testCLIPackWritesVerifiableArchive() throws {
+        let unpacked = try temporaryDirectory(named: "cli-pack-input")
+        let candidate = unpacked.deletingLastPathComponent().appendingPathComponent("cli-pack-output.pak")
+
+        XCTAssertEqual(CLI.run(arguments: ["pak", "unpack", TestFixtures.initialPak.path, unpacked.path]).exitCode, 0)
+        let packResult = CLI.run(arguments: ["pak", "pack", unpacked.path, candidate.path])
+
+        XCTAssertEqual(packResult.exitCode, 0)
+        XCTAssertTrue(packResult.stdout.contains("packed 10308 entries"))
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-content-equivalent", TestFixtures.initialPak.path, candidate.path]).exitCode, 0)
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", candidate.path]).exitCode, 0)
+    }
 }

@@ -27,4 +27,19 @@ final class PakWriterTests: XCTestCase {
         XCTAssertTrue(try PakVerifier.verifyBasic(archive).isEmpty)
         XCTAssertTrue(try PakVerifier.verifySnowPakLayout(archive).isEmpty)
     }
+
+    func testWriterRepackedInitialPakIsContentEquivalentAndSnowPakLayout() throws {
+        let unpacked = try temporaryDirectory(named: "initial-unpacked")
+        let candidate = unpacked.deletingLastPathComponent().appendingPathComponent("initial.candidate.pak")
+
+        try PakUnpacker.unpack(archiveURL: TestFixtures.initialPak, toDirectory: unpacked)
+        try PakWriter.writeArchive(fromDirectory: unpacked, to: candidate)
+
+        let original = try PakReader.readArchive(at: TestFixtures.initialPak)
+        let written = try PakReader.readArchive(at: candidate)
+
+        XCTAssertTrue(try PakVerifier.verifyBasic(written).isEmpty)
+        XCTAssertTrue(try PakVerifier.verifyContentEquivalent(reference: original, candidate: written).isEmpty)
+        XCTAssertTrue(try PakVerifier.verifySnowPakLayout(written).isEmpty)
+    }
 }
