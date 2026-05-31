@@ -36,6 +36,23 @@ public struct BinaryReader {
             | (UInt32(bytes[3]) << 24)
     }
 
+    public mutating func readInt32() throws -> Int32 {
+        Int32(bitPattern: try readUInt32())
+    }
+
+    public mutating func readInt64() throws -> Int64 {
+        let bytes = try readBytes(count: 8)
+        let value = UInt64(bytes[0])
+            | (UInt64(bytes[1]) << 8)
+            | (UInt64(bytes[2]) << 16)
+            | (UInt64(bytes[3]) << 24)
+            | (UInt64(bytes[4]) << 32)
+            | (UInt64(bytes[5]) << 40)
+            | (UInt64(bytes[6]) << 48)
+            | (UInt64(bytes[7]) << 56)
+        return Int64(bitPattern: value)
+    }
+
     public mutating func readBytes(count: Int) throws -> [UInt8] {
         guard count >= 0 else {
             throw BinaryReaderError.invalidOffset(count)
