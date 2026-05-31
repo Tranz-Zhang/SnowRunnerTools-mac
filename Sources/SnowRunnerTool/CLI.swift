@@ -34,6 +34,7 @@ public enum CLI {
           pak inspect <pak>
           pak unpack <pak> <dir>
           pak pack <dir> <pak>
+          pak pack --mixed-cache-block <dir> <pak>
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -109,8 +110,17 @@ public enum CLI {
                 return CLIResult(exitCode: 0, stdout: "unpacked \(count) entries\n", stderr: "")
 
             case "pack":
+                if arguments.count == 4, arguments[1] == "--mixed-cache-block" {
+                    let count = try PakWriter.writeArchive(
+                        fromDirectory: URL(fileURLWithPath: arguments[2], isDirectory: true),
+                        to: URL(fileURLWithPath: arguments[3]),
+                        mixedCacheBlock: true
+                    )
+                    return CLIResult(exitCode: 0, stdout: "packed \(count) entries\n", stderr: "")
+                }
+
                 guard arguments.count == 3 else {
-                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak pack <dir> <pak>\n")
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak pack [--mixed-cache-block] <dir> <pak>\n")
                 }
                 let count = try PakWriter.writeArchive(
                     fromDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true),

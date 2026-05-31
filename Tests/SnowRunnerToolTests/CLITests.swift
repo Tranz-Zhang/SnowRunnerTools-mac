@@ -70,4 +70,23 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(verifyResult.exitCode, 0)
         XCTAssertTrue(verifyResult.stdout.contains("PASS"))
     }
+
+    func testCLIPackMixedCacheBlockWritesVerifiableArchive() throws {
+        let mixedRoot = try temporaryDirectory(named: "cli-mixed-root")
+        let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("cli-mixed.pak")
+
+        XCTAssertEqual(CLI.run(arguments: ["pak", "unpack", TestFixtures.initialPak.path, mixedRoot.path]).exitCode, 0)
+        XCTAssertEqual(CLI.run(arguments: [
+            "cache-block", "unpack",
+            mixedRoot.appendingPathComponent("initial.cache_block").path,
+            mixedRoot.path
+        ]).exitCode, 0)
+
+        let packResult = CLI.run(arguments: ["pak", "pack", "--mixed-cache-block", mixedRoot.path, candidate.path])
+
+        XCTAssertEqual(packResult.exitCode, 0)
+        XCTAssertTrue(packResult.stdout.contains("packed"))
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-basic", candidate.path]).exitCode, 0)
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", candidate.path]).exitCode, 0)
+    }
 }
