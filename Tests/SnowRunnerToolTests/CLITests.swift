@@ -52,4 +52,22 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(CLI.run(arguments: ["pak", "verify-content-equivalent", TestFixtures.initialPak.path, candidate.path]).exitCode, 0)
         XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", candidate.path]).exitCode, 0)
     }
+
+    func testCLICacheBlockUnpackPackAndVerifyRoundTrip() throws {
+        let cacheBlock = try TestFixtures.extractInitialCacheBlock(from: TestFixtures.initialPak)
+        let unpacked = try temporaryDirectory(named: "cli-cache-unpack")
+        let rebuilt = unpacked.deletingLastPathComponent().appendingPathComponent("cli.cache_block")
+
+        let unpackResult = CLI.run(arguments: ["cache-block", "unpack", cacheBlock.path, unpacked.path])
+        XCTAssertEqual(unpackResult.exitCode, 0)
+        XCTAssertTrue(unpackResult.stdout.contains("unpacked"))
+
+        let packResult = CLI.run(arguments: ["cache-block", "pack", unpacked.path, rebuilt.path])
+        XCTAssertEqual(packResult.exitCode, 0)
+        XCTAssertTrue(packResult.stdout.contains("packed"))
+
+        let verifyResult = CLI.run(arguments: ["cache-block", "verify-content-equivalent", cacheBlock.path, rebuilt.path])
+        XCTAssertEqual(verifyResult.exitCode, 0)
+        XCTAssertTrue(verifyResult.stdout.contains("PASS"))
+    }
 }

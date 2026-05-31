@@ -12,6 +12,10 @@ public enum CLI {
             return CLIResult(exitCode: 2, stdout: "", stderr: usage())
         }
 
+        if arguments.first == "cache-block" {
+            return runCacheBlockCommand(Array(arguments.dropFirst()))
+        }
+
         guard arguments.first == "pak" else {
             return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown command: \(arguments[0])\n\n\(usage())")
         }
@@ -24,6 +28,9 @@ public enum CLI {
         Usage: snowrunner-tool pak <command> [arguments]
 
         Commands:
+          cache-block unpack <cache_block> <dir>
+          cache-block pack <dir> <cache_block>
+          cache-block verify-content-equivalent <reference.cache_block> <candidate.cache_block>
           pak inspect <pak>
           pak unpack <pak> <dir>
           pak pack <dir> <pak>
@@ -31,6 +38,50 @@ public enum CLI {
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
         """
+    }
+
+    private static func runCacheBlockCommand(_ arguments: [String]) -> CLIResult {
+        guard let command = arguments.first else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown cache-block command\n\n\(usage())")
+        }
+
+        do {
+            switch command {
+            case "unpack":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool cache-block unpack <cache_block> <dir>\n")
+                }
+                let count = try CacheBlockUnpacker.unpack(
+                    cacheBlockURL: URL(fileURLWithPath: arguments[1]),
+                    toDirectory: URL(fileURLWithPath: arguments[2], isDirectory: true)
+                )
+                return CLIResult(exitCode: 0, stdout: "unpacked \(count) cache-block entries\n", stderr: "")
+
+            case "pack":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool cache-block pack <dir> <cache_block>\n")
+                }
+                let count = try CacheBlockWriter.writeArchive(
+                    fromDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true),
+                    to: URL(fileURLWithPath: arguments[2])
+                )
+                return CLIResult(exitCode: 0, stdout: "packed \(count) cache-block entries\n", stderr: "")
+
+            case "verify-content-equivalent":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool cache-block verify-content-equivalent <reference.cache_block> <candidate.cache_block>\n")
+                }
+                let reference = try CacheBlockReader.readArchive(at: URL(fileURLWithPath: arguments[1]))
+                let candidate = try CacheBlockReader.readArchive(at: URL(fileURLWithPath: arguments[2]))
+                let issues = try CacheBlockVerifier.verifyContentEquivalent(reference: reference, candidate: candidate)
+                return verifierResult(name: "cache-block verify-content-equivalent", issues: issues)
+
+            default:
+                return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown cache-block command: \(command)\n\n\(usage())")
+            }
+        } catch {
+            return CLIResult(exitCode: 1, stdout: "", stderr: "\(error)\n")
+        }
     }
 
     private static func runPakCommand(_ arguments: [String]) -> CLIResult {
