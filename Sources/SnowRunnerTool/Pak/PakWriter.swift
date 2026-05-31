@@ -16,6 +16,32 @@ public enum PakWriter {
     }
 
     @discardableResult
+    public static func writeArchive(fromDirectory directory: URL, to outputURL: URL, mixedCacheBlock: Bool) throws -> Int {
+        guard mixedCacheBlock else {
+            return try writeArchive(fromDirectory: directory, to: outputURL)
+        }
+
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SnowRunnerTool-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true, attributes: nil)
+        defer {
+            try? FileManager.default.removeItem(at: temporaryDirectory)
+        }
+
+        let cacheBlockURL = temporaryDirectory.appendingPathComponent(CacheBlockConstants.initialCacheBlockName)
+        try CacheBlockWriter.writeArchive(fromDirectory: directory, to: cacheBlockURL, mixed: true)
+
+        let sources = try PakDirectoryScanner.scan(
+            rootDirectory: directory,
+            excludingTopLevelDirectories: Set(CacheBlockConstants.mixedTopLevelDirectories),
+            additionalFileSources: [
+                PakFileSource(internalName: CacheBlockConstants.initialCacheBlockName, fileURL: cacheBlockURL)
+            ]
+        )
+        return try writeArchive(fileSources: sources, to: outputURL)
+    }
+
+    @discardableResult
     public static func writeArchive(fileSources: [PakFileSource], to outputURL: URL) throws -> Int {
         guard fileSources.count <= Int(UInt16.max) else {
             throw PakWriterError.entryCountExceedsZip32(fileSources.count)

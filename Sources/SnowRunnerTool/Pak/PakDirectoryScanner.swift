@@ -12,7 +12,16 @@ public struct PakFileSource: Equatable {
 
 public enum PakDirectoryScanner {
     public static func scan(rootDirectory: URL) throws -> [PakFileSource] {
+        try scan(rootDirectory: rootDirectory, excludingTopLevelDirectories: [], additionalFileSources: [])
+    }
+
+    public static func scan(
+        rootDirectory: URL,
+        excludingTopLevelDirectories excludedDirectories: Set<String>,
+        additionalFileSources: [PakFileSource]
+    ) throws -> [PakFileSource] {
         let root = rootDirectory.standardizedFileURL
+        let additionalNames = Set(additionalFileSources.map(\.internalName))
         let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey]
         guard let enumerator = FileManager.default.enumerator(
             at: root,
@@ -24,21 +33,31 @@ public enum PakDirectoryScanner {
 
         var sources: [PakFileSource] = []
         for case let fileURL as URL in enumerator {
+            let relativeComponents = Array(fileURL.standardizedFileURL.pathComponents.dropFirst(root.pathComponents.count))
+            if let topLevel = relativeComponents.first, excludedDirectories.contains(topLevel) {
+                enumerator.skipDescendants()
+                continue
+            }
+
             let values = try fileURL.resourceValues(forKeys: resourceKeys)
             guard values.isRegularFile == true else {
                 continue
             }
 
             let internalName = try PakPath.internalName(forFileAt: fileURL, rootDirectory: root)
+            if additionalNames.contains(internalName) {
+                continue
+            }
             sources.append(PakFileSource(internalName: internalName, fileURL: fileURL))
         }
 
-        try PakPath.validatePackInput(internalNames: sources.map(\.internalName))
-        guard sources.contains(where: { $0.internalName == "pak.load_list" }) else {
+        let combinedSources = sources + additionalFileSources
+        try PakPath.validatePackInput(internalNames: combinedSources.map(\.internalName))
+        guard combinedSources.contains(where: { $0.internalName == "pak.load_list" }) else {
             throw PakWriterError.missingPakLoadList
         }
 
-        return sources.sorted { left, right in
+        return combinedSources.sorted { left, right in
             let leftKey = writerSortKey(left.internalName)
             let rightKey = writerSortKey(right.internalName)
             if leftKey.bucket != rightKey.bucket {
