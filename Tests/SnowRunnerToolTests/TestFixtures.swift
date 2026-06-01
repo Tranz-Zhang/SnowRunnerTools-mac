@@ -21,6 +21,17 @@ enum TestFixtures {
         try PakReader.readUncompressedPayload(entry: entry, in: archive).write(to: output)
         return output
     }
+
+    static func extractPakLoadList(from pakURL: URL) throws -> URL {
+        let archive = try PakReader.readArchive(at: pakURL)
+        guard let entry = archive.entries.first(where: { $0.name == LoadListConstants.manifestEntryName }) else {
+            throw LoadListError.missingManifestEntry
+        }
+        let output = try temporaryDirectory(named: "load-list-fixture")
+            .appendingPathComponent(LoadListConstants.manifestEntryName)
+        try PakReader.readUncompressedPayload(entry: entry, in: archive).write(to: output)
+        return output
+    }
 }
 
 func temporaryDirectory(named name: String) throws -> URL {
