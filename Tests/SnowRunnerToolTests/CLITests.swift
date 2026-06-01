@@ -89,6 +89,36 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool load-list inspect"))
     }
 
+    func testCLILoadListCreateInitialWritesParseableManifest() throws {
+        guard let sharedPak = TestFixtures.optionalSharedPak(),
+              let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
+            throw XCTSkip("fixtures/shared.pak and fixtures/shared_sound.pak required for create-initial test")
+        }
+        let target = try temporaryDirectory(named: "cli-load-list")
+            .appendingPathComponent("pak.load_list")
+
+        let result = CLI.run(arguments: [
+            "load-list", "create-initial",
+            target.path,
+            TestFixtures.initialPak.path,
+            sharedPak.path,
+            sharedSoundPak.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("created"))
+
+        let manifest = try LoadListReader.readManifest(from: target)
+        XCTAssertEqual(manifest.phaseOrder, LoadListConstants.phasesInWriteOrder)
+    }
+
+    func testCLILoadListCreateInitialWithWrongArgCountFails() {
+        let result = CLI.run(arguments: ["load-list", "create-initial", "target", "initial.pak"])
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool load-list create-initial"))
+    }
+
     func testCLIPackMixedCacheBlockWritesVerifiableArchive() throws {
         let mixedRoot = try temporaryDirectory(named: "cli-mixed-root")
         let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("cli-mixed.pak")

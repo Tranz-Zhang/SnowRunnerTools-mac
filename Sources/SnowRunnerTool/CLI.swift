@@ -36,6 +36,7 @@ public enum CLI {
           cache-block pack <dir> <cache_block>
           cache-block verify-content-equivalent <reference.cache_block> <candidate.cache_block>
           load-list inspect <pak.load_list>
+          load-list create-initial <target.load_list> <initial.pak> <shared.pak> <shared_sound.pak>
           pak inspect <pak>
           pak unpack <pak> <dir>
           pak pack <dir> <pak>
@@ -103,6 +104,23 @@ public enum CLI {
                 }
                 let manifest = try LoadListReader.readManifest(from: URL(fileURLWithPath: arguments[1]))
                 return CLIResult(exitCode: 0, stdout: LoadListInspector.compactReport(manifest), stderr: "")
+
+            case "create-initial":
+                guard arguments.count == 5 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool load-list create-initial <target.load_list> <initial.pak> <shared.pak> <shared_sound.pak>\n")
+                }
+                let manifest = try LoadListBuilder.buildManifestFromPaks(inputs: .init(
+                    initialPak: URL(fileURLWithPath: arguments[2]),
+                    sharedPak: URL(fileURLWithPath: arguments[3]),
+                    sharedSoundPak: URL(fileURLWithPath: arguments[4])
+                ))
+                try LoadListWriter.writeManifest(manifest, to: URL(fileURLWithPath: arguments[1]))
+                let total = manifest.phaseOrder.reduce(0) { $0 + (manifest.recordsByPhase[$1]?.count ?? 0) }
+                return CLIResult(
+                    exitCode: 0,
+                    stdout: "created load-list with \(total) records across \(manifest.phaseOrder.count) phases\n",
+                    stderr: ""
+                )
 
             default:
                 return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown load-list command: \(command)\n\n\(usage())")
