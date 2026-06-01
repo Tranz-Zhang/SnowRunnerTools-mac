@@ -44,24 +44,58 @@ fixtures/initial.pak / fixtures/initial.repacked.pak:
   pak.load_list crc32: 0xE635B186
   pak.load_list is the first PAK entry and stored
 
-manifest header (first 13 bytes):
+manifest header (first 14 bytes):
   offset 0..3:  version u32 = 0x00000001
   offset 4:     marker u8   = 0x01
-  offset 5..8:  total_record_count u32 = 0x000045FD = 17917
-  offset 9..12: header_tail u32 (observed value 0x00000003; semantics undecided —
-                  may be source-pak count or something else; the parser captures
-                  it verbatim and the writer emits it back unchanged)
+  offset 5..8:  total_entry_count u32 = 0x000045FD = 17917
+  offset 9..12: header_tail u32 = 0x00000003 (semantics undecided; the parser
+                  captures it verbatim and the writer emits it back unchanged)
+  offset 13:    marker u8   = 0x01
 
-manifest body layout (preliminary, confirmed by scanning the fixture):
-  offset 13: a per-record byte table of length total_record_count (17917 bytes).
-             Observed values are 0x01, 0x02, 0x05; meaning is captured verbatim
-             on `LoadListRecord.flags`, not interpreted by the writer.
-  offset 13 + 17917 = 17930: a second per-record table whose entry size is
-             still being established (5 bytes per entry has been ruled out; needs
-             further byte-level verification).
-  records and phase tags then follow. Phase tags are written as length-prefixed
-  CP437 strings ending with the literal token " load". Each phase tag is followed
-  by per-phase footer bytes the parser captures verbatim.
+manifest body layout (verified by parsing the fixture against the SnowPakTool
+reference reader, `src/SnowPakTool/LoadListFile.cs`):
+  offset 14:                 entry-types byte array of length total_entry_count
+                             (17917 bytes). Observed value-set is
+                               0x01 = Stage   (13 occurrences)
+                               0x02 = Asset   (17902 occurrences)
+                               0x05 = Start   (1 occurrence; first entry)
+                               0x06 = End     (1 occurrence; last entry)
+                             Captured verbatim on each entry; the writer emits
+                             this byte back from each entry's type.
+  offset 14 + 17917 = 17931: marker u8 = 0x01.
+  offset 17932:              dependency block, one per entry in entry-index
+                             order:
+                               u32 dependsOnCount
+                               u8  marker = 0x01
+                               int32[dependsOnCount] dependency entry indices
+                             The Start entry has zero dependencies; Asset and End
+                             entries depend on (i-1); Stage entries depend on
+                             every preceding entry since the previous group head
+                             (or i-1 if there is exactly one).
+                             marker u8 = 0x01 follows the last dependency block.
+  next:                      strings block, one per entry in entry-index order:
+                               u32 stringsCount
+                                 Start = 0, End = 0, Stage = 1,
+                                 Asset = 3 (or 4 when Json is present)
+                               u32 magicBCount = 2
+                               u8[stringsCount] magicA — all 0x01
+                               u8[2]            magicB — all 0x01
+                               length-prefixed CP437 strings (u32 length
+                                 followed by ASCII bytes; no terminator):
+                                 Stage:  Text (e.g. "DESC_BLOCK load")
+                                 Asset:  InternalName (e.g.
+                                   "<media>\\classes\\trucks\\hummer_h2.xml"),
+                                   Loader (e.g. "cls_loader"),
+                                   PakName (e.g. "initial.pak"),
+                                   optional Json (only present when
+                                   stringsCount == 4)
+  end of file:               the strings block ends exactly at the file
+                             length; no trailer.
+
+Phase tags belong to Stage entries' single string; assets between two adjacent
+stages belong to the *following* stage's group (per SnowPakTool's
+`CreateEntries`). The `recordsByPhase` map exposed by `LoadListManifest` keys
+phase tags to their owned Asset entries in entry-index order.
 
 phase set actually present in the fixture (in write order discovered by scanning):
   RES3_INIT load

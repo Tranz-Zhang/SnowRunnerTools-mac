@@ -34,9 +34,10 @@ public enum LoadListConstants {
     ]
 
     public static let knownLoaderTypes: [String] = [
-        "cls_loader",
-        "tpl_loader",
+        "spdb",
         "sslbundle",
+        "tpl_loader",
+        "cls_loader",
         "mesh_loader",
         "sound_loader"
     ]

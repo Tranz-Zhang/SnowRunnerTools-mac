@@ -1,36 +1,37 @@
 import Foundation
 
+/// A high-level view of a single Asset entry parsed from `pak.load_list`.
+/// Phase-control entries (Start/End/Stage) are captured at the lower
+/// `LoadListEntry` level and are not exposed here.
 public struct LoadListRecord: Equatable {
-    /// The manifest path, e.g. `<media>\\classes\\trucks\\hummer_h2.xml`. Empty for
-    /// phase-control / terminator records that carry no path.
+    /// The manifest path, e.g. `<media>\\classes\\trucks\\hummer_h2.xml`.
     public let manifestPath: String
 
-    /// The loader-type token, e.g. `cls_loader`. Empty for phase-control /
-    /// terminator records that carry no loader type.
+    /// The loader-type token, e.g. `cls_loader`.
     public let loaderType: String
 
-    /// The owning source pak filename, e.g. `initial.pak`. Empty for
-    /// phase-control / terminator records that do not embed a source-pak string.
+    /// The owning source pak filename, e.g. `initial.pak`.
     public let sourcePak: String
 
-    /// The single per-record byte from the manifest's per-record byte table at
-    /// offset 13. Observed values in the reference fixture are 0x01, 0x02, 0x05.
-    public let flags: UInt8
+    /// Optional fourth string (`Json` in SnowPakTool). Present only when an
+    /// Asset entry carries 4 strings instead of 3. Always `nil` for records
+    /// in the reference fixture.
+    public let json: String?
 
-    /// The owning phase tag, e.g. `DESC_BLOCK load`.
+    /// The owning phase tag, e.g. `CLASSES load`.
     public let phase: String
 
     public init(
         manifestPath: String,
         loaderType: String,
         sourcePak: String,
-        flags: UInt8,
+        json: String? = nil,
         phase: String
     ) {
         self.manifestPath = manifestPath
         self.loaderType = loaderType
         self.sourcePak = sourcePak
-        self.flags = flags
+        self.json = json
         self.phase = phase
     }
 }
