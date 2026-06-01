@@ -4,6 +4,10 @@ public enum LoadListConstants {
     public static let manifestEntryName = "pak.load_list"
     public static let versionTag: UInt32 = 0x00000001
     public static let marker: UInt8 = 0x01
+    /// Captured verbatim from `pak.load_list` in `fixtures/initial.pak`.
+    /// Semantics are not documented; the writer emits it back unchanged so
+    /// the reference manifest round-trips byte-for-byte.
+    public static let headerTail: UInt32 = 0x00000003
 
     /// The 13 phase tags observed in `pak.load_list` from `fixtures/initial.pak`,
     /// in write order. The format-doc §12.2 list of 8 phases is incomplete; the

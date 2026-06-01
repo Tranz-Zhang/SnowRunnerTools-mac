@@ -37,6 +37,16 @@ enum TestFixtures {
         let url = root.appendingPathComponent("fixtures/reports/load-list-compact.txt")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
+
+    static func optionalSharedPak() -> URL? {
+        let url = root.appendingPathComponent("fixtures/shared.pak")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    static func optionalSharedSoundPak() -> URL? {
+        let url = root.appendingPathComponent("fixtures/shared_sound.pak")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 func temporaryDirectory(named name: String) throws -> URL {
