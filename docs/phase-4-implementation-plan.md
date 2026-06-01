@@ -8,6 +8,8 @@
 
 **Tech Stack:** Swift 6, Swift Package Manager, Foundation `Data` / `FileHandle` / `FileManager`, existing CP437 ASCII fast path, existing custom PAK reader/writer, existing cache-block module, XCTest.
 
+**Status:** Complete as of 2026-06-02. Automated acceptance passed with `85 tests, 0 failures`; runtime validation produced `validation/output/initial.pak` with `verify-basic` and `verify-snowpak-layout` passing; manual game launch succeeded with the rebuilt output PAK.
+
 ---
 
 ## Phase Goal
@@ -28,12 +30,13 @@ Phase 4 proves `pak.load_list` by parsing the existing manifest, regenerating an
 
 - `fixtures/initial.pak`: required before implementation starts; contains the original `pak.load_list` as the first stored PAK entry and the reference content set for `[media]`, `[ssl_cache]`, `[strings]`, and `initial.cache_block`.
 - `fixtures/initial.repacked.pak`: required before implementation starts; contains the same `pak.load_list` bytes; used as a second parser-input fixture and as the Phase 2 layout reference for the outer PAK.
-- `fixtures/shared.pak`: required before `load-list create-initial` implementation starts; provides the content set classified into the `cls_loader` and `mesh_loader` records that point at `shared.pak`. Required only for the rebuild and CLI tasks; read-only `load-list inspect` does not depend on it.
-- `fixtures/shared_sound.pak`: required before `load-list create-initial` implementation starts; provides the content set for `sound_loader` records that point at `shared_sound.pak`. Required only for the rebuild and CLI tasks.
+- `validation/input/initial.pak`: required for manual runtime validation; this should be copied from the target game install that will receive the rebuilt candidate.
+- `validation/input/shared.pak`: required for manual runtime validation; provides the content set classified into the `cls_loader` and `mesh_loader` records that point at `shared.pak`. This runtime PAK is intentionally not a committed test fixture.
+- `validation/input/shared_sound.pak`: required for manual runtime validation; provides the content set for `sound_loader` records that point at `shared_sound.pak`. This runtime PAK is intentionally not a committed test fixture.
 - `fixtures/shared_debug.pak`: optional. The reference manifest includes three `shared_debug.pak` `.spdb` records, but runtime installs may not expose the original debug PAK. Exact historical parity requires this fixture. Runtime acceptance does not; tests exclude `shared_debug.pak` records from containment checks when the fixture is absent.
 - `fixtures/reports/load-list-compact.txt`: required before the parser-equivalence task starts; produced by SnowPakTool on Windows with `snowpaktool load_list list --compact`. Treated as the read-only oracle for parser output.
 - A generated standalone `pak.load_list` file under the XCTest temporary directory: produced by reading the manifest entry from `fixtures/initial.pak` so the parser can read a real manifest without committing another fixture file.
-- A generated rebuilt `pak.load_list` file under the XCTest temporary directory: produced by `LoadListBuilder` from the available fixture PAKs. When `shared.pak` / `shared_sound.pak` are runtime PAKs that include DLC or later-build records, builder acceptance is containment-based rather than exact record-count parity.
+- A generated rebuilt `pak.load_list` file under the XCTest temporary directory: produced by `LoadListBuilder` from the available fixture PAKs. Runtime validation uses ignored `validation/input` PAKs instead of committed fixtures. When `shared.pak` / `shared_sound.pak` are runtime PAKs that include DLC or later-build records, builder acceptance is containment-based rather than exact record-count parity.
 - A generated rebuilt-manifest mixed candidate PAK under the XCTest temporary directory: proves the outer PAK writer accepts the rebuilt manifest and the existing verifier still passes.
 
 Fixture facts this phase depends on (verified by inspecting `fixtures/initial.pak`'s `pak.load_list` bytes directly):
@@ -1296,22 +1299,15 @@ Expected: PASS.
 Run:
 
 ```bash
-PHASE4_DIR="$(mktemp -d /tmp/snowrunner-tools-phase4.XXXXXX)"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack fixtures/initial.pak "$PHASE4_DIR/initial"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool cache-block unpack "$PHASE4_DIR/initial/initial.cache_block" "$PHASE4_DIR/initial"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list inspect "$PHASE4_DIR/initial/pak.load_list" > "$PHASE4_DIR/inspect.txt"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list create-initial "$PHASE4_DIR/created.load_list" fixtures/initial.pak fixtures/shared.pak fixtures/shared_sound.pak
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak pack --rebuild-load-list --mixed-cache-block "$PHASE4_DIR/initial" "$PHASE4_DIR/initial.rebuild.pak" fixtures/shared.pak fixtures/shared_sound.pak
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-basic "$PHASE4_DIR/initial.rebuild.pak"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-snowpak-layout "$PHASE4_DIR/initial.rebuild.pak"
+scripts/phase4-runtime-validation.sh
 ```
 
 Expected:
 
 ```text
-load-list inspect exits 0 and matches fixtures/reports/load-list-compact.txt under the same normalization the test uses
-load-list create-initial exits 0 and writes a parseable manifest
-pak pack --rebuild-load-list --mixed-cache-block exits 0
+validation/output/inspect.txt is written
+validation/output/created.load_list is parseable
+validation/output/initial.pak is written with the original loose `[strings]` entries preserved
 verify-basic exits 0
 verify-snowpak-layout exits 0
 ```
@@ -1321,14 +1317,14 @@ verify-snowpak-layout exits 0
 Run:
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-content-equivalent fixtures/initial.pak "$PHASE4_DIR/initial.rebuild.pak"
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-content-equivalent validation/input/initial.pak validation/output/initial.pak
 ```
 
 Expected: FAIL only for the same reasons Phase 3 documents (loose `[strings]` moved into `initial.cache_block`, plus a different `pak.load_list` byte set when the rebuilder produces deterministic output that differs from the original record order). Do not block Phase 4 on byte equality with the original manifest; block only on game launch.
 
 - [ ] **Step 4: Manual game-launch acceptance**
 
-Replace a backed-up game `initial.pak` with `$PHASE4_DIR/initial.rebuild.pak` and launch the game.
+Replace a backed-up game `initial.pak` with `validation/output/initial.pak` and launch the game.
 
 Expected:
 
@@ -1366,25 +1362,18 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift test
 Must pass.
 
 ```bash
-PHASE4_DIR="$(mktemp -d /tmp/snowrunner-tools-phase4.XXXXXX)"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack fixtures/initial.pak "$PHASE4_DIR/initial"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool cache-block unpack "$PHASE4_DIR/initial/initial.cache_block" "$PHASE4_DIR/initial"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list inspect "$PHASE4_DIR/initial/pak.load_list"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list create-initial "$PHASE4_DIR/created.load_list" fixtures/initial.pak fixtures/shared.pak fixtures/shared_sound.pak
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak pack --rebuild-load-list --mixed-cache-block "$PHASE4_DIR/initial" "$PHASE4_DIR/initial.rebuild.pak" fixtures/shared.pak fixtures/shared_sound.pak
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-basic "$PHASE4_DIR/initial.rebuild.pak"
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-snowpak-layout "$PHASE4_DIR/initial.rebuild.pak"
+scripts/phase4-runtime-validation.sh
 ```
 
 Must pass.
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-content-equivalent fixtures/initial.pak "$PHASE4_DIR/initial.rebuild.pak"
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-content-equivalent validation/input/initial.pak validation/output/initial.pak
 ```
 
-Must fail only for expected reasons documented in Phase 3 plus regenerated `pak.load_list` bytes that no longer match the original record ordering/content. Runtime `shared.pak` inputs may include additional DLC/runtime records; those extra manifest records are allowed if the rebuilt candidate still passes layout verification and game launch.
+Must fail only for regenerated `pak.load_list` bytes that no longer match the original record ordering/content. Runtime `shared.pak` inputs may include additional DLC/runtime records; those extra manifest records are allowed if the rebuilt candidate still passes layout verification and game launch.
 
-Manual game-launch acceptance must pass with `$PHASE4_DIR/initial.rebuild.pak`.
+Manual game-launch acceptance must pass with `validation/output/initial.pak`. The runtime validation script intentionally does not use `--mixed-cache-block`; it isolates Phase 4 by preserving loose `[strings]` entries in the outer PAK while rebuilding only `pak.load_list`.
 
 ## Risks
 
@@ -1392,7 +1381,7 @@ Manual game-launch acceptance must pass with `$PHASE4_DIR/initial.rebuild.pak`.
 - Classifier completeness: the rules cover the loader types observed in the reference fixture. New entry shapes that match no rule must throw rather than silently dropping records. Builder parity tests in Task 7 enforce this.
 - `shared_debug.pak` attribution: the manifest references `shared_debug.pak` for three `.spdb` records. Historical exact parity requires the matching debug PAK; runtime rebuilds may omit those records when the fixture is unavailable. Do not block runtime acceptance on this unless game launch fails.
 - Runtime shared PAKs: available `shared.pak` / `shared_sound.pak` files may be supersets of the historical PAKs that produced `fixtures/initial.pak`'s manifest. Exact record parity is only meaningful for version-matched fixtures. Runtime acceptance is based on containment, verifier success, and game launch.
-- Optional fixtures: `fixtures/shared.pak` and `fixtures/shared_sound.pak` are large and may be absent on some machines. Tests that require them must skip via `XCTSkip` rather than fail. Manual acceptance and game-launch acceptance still require both files (and possibly `shared_debug.pak`).
+- Optional shared fixtures: `fixtures/shared.pak` and `fixtures/shared_sound.pak` are large and should not be committed. Automated tests that require them must skip via `XCTSkip` when they are absent. Manual acceptance uses ignored files under `validation/input/` and still requires both runtime PAKs.
 - CP437 support is still ASCII-only. Manifest strings in current fixtures are ASCII; non-ASCII paths must fail clearly rather than guessing an encoding.
 - Game compatibility is not proven by parser equivalence alone. Phase 4 emits a candidate PAK with a regenerated manifest, so manual launch remains part of acceptance.
 - Determinism: rebuilt manifest bytes can change if the classifier sort key, source-pak first-seen order, or per-phase footer constants change. Pin all three in code constants (or fixture-derived constants) and cover them in Task 5's round-trip and Task 7's parity tests.
