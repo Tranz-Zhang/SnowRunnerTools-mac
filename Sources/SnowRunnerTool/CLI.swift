@@ -16,6 +16,10 @@ public enum CLI {
             return runCacheBlockCommand(Array(arguments.dropFirst()))
         }
 
+        if arguments.first == "load-list" {
+            return runLoadListCommand(Array(arguments.dropFirst()))
+        }
+
         guard arguments.first == "pak" else {
             return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown command: \(arguments[0])\n\n\(usage())")
         }
@@ -31,6 +35,7 @@ public enum CLI {
           cache-block unpack <cache_block> <dir>
           cache-block pack <dir> <cache_block>
           cache-block verify-content-equivalent <reference.cache_block> <candidate.cache_block>
+          load-list inspect <pak.load_list>
           pak inspect <pak>
           pak unpack <pak> <dir>
           pak pack <dir> <pak>
@@ -79,6 +84,28 @@ public enum CLI {
 
             default:
                 return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown cache-block command: \(command)\n\n\(usage())")
+            }
+        } catch {
+            return CLIResult(exitCode: 1, stdout: "", stderr: "\(error)\n")
+        }
+    }
+
+    private static func runLoadListCommand(_ arguments: [String]) -> CLIResult {
+        guard let command = arguments.first else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown load-list command\n\n\(usage())")
+        }
+
+        do {
+            switch command {
+            case "inspect":
+                guard arguments.count == 2 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool load-list inspect <pak.load_list>\n")
+                }
+                let manifest = try LoadListReader.readManifest(from: URL(fileURLWithPath: arguments[1]))
+                return CLIResult(exitCode: 0, stdout: LoadListInspector.compactReport(manifest), stderr: "")
+
+            default:
+                return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown load-list command: \(command)\n\n\(usage())")
             }
         } catch {
             return CLIResult(exitCode: 1, stdout: "", stderr: "\(error)\n")

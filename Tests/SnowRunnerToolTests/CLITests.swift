@@ -71,6 +71,24 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(verifyResult.stdout.contains("PASS"))
     }
 
+    func testCLILoadListInspectMatchesInspectorOutput() throws {
+        let url = try TestFixtures.extractPakLoadList(from: TestFixtures.initialPak)
+
+        let result = CLI.run(arguments: ["load-list", "inspect", url.path])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stderr, "")
+        let manifest = try LoadListReader.readManifest(from: url)
+        XCTAssertEqual(result.stdout, LoadListInspector.compactReport(manifest))
+    }
+
+    func testCLILoadListInspectWithMissingArgumentFails() {
+        let result = CLI.run(arguments: ["load-list", "inspect"])
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool load-list inspect"))
+    }
+
     func testCLIPackMixedCacheBlockWritesVerifiableArchive() throws {
         let mixedRoot = try temporaryDirectory(named: "cli-mixed-root")
         let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("cli-mixed.pak")
