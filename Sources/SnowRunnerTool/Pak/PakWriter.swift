@@ -17,8 +17,28 @@ public enum PakWriter {
 
     @discardableResult
     public static func writeArchive(fromDirectory directory: URL, to outputURL: URL, mixedCacheBlock: Bool) throws -> Int {
-        guard mixedCacheBlock else {
-            return try writeArchive(fromDirectory: directory, to: outputURL)
+        try writeArchive(
+            fromDirectory: directory,
+            to: outputURL,
+            rebuildLoadList: false,
+            mixedCacheBlock: mixedCacheBlock,
+            sharedPak: nil,
+            sharedSoundPak: nil
+        )
+    }
+
+    @discardableResult
+    public static func writeArchive(
+        fromDirectory directory: URL,
+        to outputURL: URL,
+        rebuildLoadList: Bool,
+        mixedCacheBlock: Bool,
+        sharedPak: URL?,
+        sharedSoundPak: URL?
+    ) throws -> Int {
+        if !rebuildLoadList && !mixedCacheBlock {
+            let sources = try PakDirectoryScanner.scan(rootDirectory: directory)
+            return try writeArchive(fileSources: sources, to: outputURL)
         }
 
         let temporaryDirectory = FileManager.default.temporaryDirectory
@@ -28,17 +48,80 @@ public enum PakWriter {
             try? FileManager.default.removeItem(at: temporaryDirectory)
         }
 
-        let cacheBlockURL = temporaryDirectory.appendingPathComponent(CacheBlockConstants.initialCacheBlockName)
-        try CacheBlockWriter.writeArchive(fromDirectory: directory, to: cacheBlockURL, mixed: true)
+        var additionalFileSources: [PakFileSource] = []
+        var excludedTopLevelDirectories: Set<String> = []
+
+        if mixedCacheBlock {
+            let cacheBlockURL = temporaryDirectory.appendingPathComponent(CacheBlockConstants.initialCacheBlockName)
+            try CacheBlockWriter.writeArchive(fromDirectory: directory, to: cacheBlockURL, mixed: true)
+            additionalFileSources.append(
+                PakFileSource(internalName: CacheBlockConstants.initialCacheBlockName, fileURL: cacheBlockURL)
+            )
+            excludedTopLevelDirectories.formUnion(CacheBlockConstants.mixedTopLevelDirectories)
+        }
+
+        if rebuildLoadList {
+            guard let sharedPak else { throw PakWriterError.missingSharedPak }
+            guard let sharedSoundPak else { throw PakWriterError.missingSharedSoundPak }
+
+            // Walk the unpacked directory (treated as `initial.pak`'s contents) plus the
+            // two shared PAKs, classify each entry, build the manifest, and inject it as
+            // an additional file source so any stale `pak.load_list` on disk is ignored.
+            let manifestURL = temporaryDirectory.appendingPathComponent(LoadListConstants.manifestEntryName)
+            let records = try collectLoadListRecordsFromDirectory(directory)
+                + (try collectLoadListRecordsFromPak(sharedPak, sourcePak: "shared.pak"))
+                + (try collectLoadListRecordsFromPak(sharedSoundPak, sourcePak: "shared_sound.pak"))
+            let manifest = try LoadListBuilder.buildManifest(records: records)
+            try LoadListWriter.writeManifest(manifest, to: manifestURL)
+            additionalFileSources.append(
+                PakFileSource(internalName: LoadListConstants.manifestEntryName, fileURL: manifestURL)
+            )
+        }
 
         let sources = try PakDirectoryScanner.scan(
             rootDirectory: directory,
-            excludingTopLevelDirectories: Set(CacheBlockConstants.mixedTopLevelDirectories),
-            additionalFileSources: [
-                PakFileSource(internalName: CacheBlockConstants.initialCacheBlockName, fileURL: cacheBlockURL)
-            ]
+            excludingTopLevelDirectories: excludedTopLevelDirectories,
+            additionalFileSources: additionalFileSources
         )
         return try writeArchive(fileSources: sources, to: outputURL)
+    }
+
+    private static func collectLoadListRecordsFromDirectory(_ directory: URL) throws -> [LoadListRecord] {
+        let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory.standardizedFileURL,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        var records: [LoadListRecord] = []
+        for case let fileURL as URL in enumerator {
+            let values = try fileURL.resourceValues(forKeys: resourceKeys)
+            guard values.isRegularFile == true else { continue }
+            let internalName = try PakPath.internalName(forFileAt: fileURL, rootDirectory: directory.standardizedFileURL)
+            if let record = try LoadListClassifier.classify(.init(
+                internalName: internalName,
+                sourcePak: "initial.pak"
+            )) {
+                records.append(record)
+            }
+        }
+        return records
+    }
+
+    private static func collectLoadListRecordsFromPak(_ pakURL: URL, sourcePak: String) throws -> [LoadListRecord] {
+        let archive = try PakReader.readArchive(at: pakURL)
+        var records: [LoadListRecord] = []
+        for entry in archive.entries {
+            if let record = try LoadListClassifier.classify(.init(
+                internalName: entry.name,
+                sourcePak: sourcePak
+            )) {
+                records.append(record)
+            }
+        }
+        return records
     }
 
     @discardableResult

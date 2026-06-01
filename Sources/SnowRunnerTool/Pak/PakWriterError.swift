@@ -5,6 +5,8 @@ public enum PakWriterError: Error, CustomStringConvertible, Equatable {
     case valueExceedsUInt16(field: String, value: Int)
     case valueExceedsUInt32(field: String, value: UInt64)
     case missingPakLoadList
+    case missingSharedPak
+    case missingSharedSoundPak
 
     public var description: String {
         switch self {
@@ -16,6 +18,10 @@ public enum PakWriterError: Error, CustomStringConvertible, Equatable {
             return "\(field) exceeds UInt32: \(value)"
         case .missingPakLoadList:
             return "Pack input is missing pak.load_list"
+        case .missingSharedPak:
+            return "shared.pak fixture is required to rebuild pak.load_list"
+        case .missingSharedSoundPak:
+            return "shared_sound.pak fixture is required to rebuild pak.load_list"
         }
     }
 }
