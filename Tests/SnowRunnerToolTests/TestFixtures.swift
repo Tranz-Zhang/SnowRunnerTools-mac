@@ -32,6 +32,11 @@ enum TestFixtures {
         try PakReader.readUncompressedPayload(entry: entry, in: archive).write(to: output)
         return output
     }
+
+    static func optionalCompactReferenceReport() -> URL? {
+        let url = root.appendingPathComponent("fixtures/reports/load-list-compact.txt")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 func temporaryDirectory(named name: String) throws -> URL {
