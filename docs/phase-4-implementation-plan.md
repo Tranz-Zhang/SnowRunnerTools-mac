@@ -492,13 +492,30 @@ func testReaderParsesEveryRecordInReferenceManifest() throws {
     let total = manifest.phaseOrder.reduce(0) { partial, phase in
         partial + (manifest.recordsByPhase[phase]?.count ?? 0)
     }
-    XCTAssertGreaterThan(total, 17000)
+    XCTAssertEqual(total, 17902)
 
-    let descBlock = manifest.recordsByPhase["DESC_BLOCK load", default: []]
-    XCTAssertTrue(descBlock.contains { $0.loaderType == "cls_loader" && $0.manifestPath.hasPrefix("<media>\\classes\\trucks") })
+    let classes = manifest.recordsByPhase["CLASSES load", default: []]
+    XCTAssertEqual(classes.count, 10284)
+    XCTAssertTrue(classes.contains { $0.loaderType == "cls_loader" && $0.manifestPath.hasPrefix("<media>\\classes\\trucks") })
 
-    let initialPakRecords = descBlock.filter { $0.sourcePak == "initial.pak" }
-    XCTAssertGreaterThan(initialPakRecords.count, 0)
+    let mesh = manifest.recordsByPhase["MESH load", default: []]
+    XCTAssertEqual(mesh.count, 7606)
+    XCTAssertTrue(mesh.allSatisfy { $0.loaderType == "mesh_loader" && $0.sourcePak == "shared.pak" })
+
+    let sound = manifest.recordsByPhase["SOUND load", default: []]
+    XCTAssertEqual(sound.count, 1)
+    XCTAssertEqual(sound.first?.loaderType, "sound_loader")
+    XCTAssertEqual(sound.first?.sourcePak, "shared_sound.pak")
+
+    let templates = manifest.recordsByPhase["TEMPLATES load", default: []]
+    XCTAssertEqual(templates.count, 5)
+    XCTAssertTrue(templates.allSatisfy { $0.loaderType == "tpl_loader" })
+
+    let sslInitial = manifest.recordsByPhase["SSL_INITIAL load", default: []]
+    XCTAssertEqual(sslInitial.count, 6)
+    XCTAssertTrue(sslInitial.contains { $0.loaderType == "sslbundle" })
+
+    XCTAssertEqual(manifest.recordsByPhase["DESC_BLOCK load", default: []].count, 0)
 }
 
 func testReaderRejectsTruncatedManifest() {
@@ -519,24 +536,9 @@ Expected: FAIL because the reader still treats phases as opaque bytes.
 
 - [ ] **Step 3: Implement full record parsing**
 
-The reader must parse the structures in the order documented under "Fixture facts": signature/version, total record count, source-pak table, per-record flag/category table (a contiguous run of one byte per record), then each phase as:
+The reader must parse the structures in the order documented under "Fixture facts": header (14 bytes), entry-types byte array, marker, per-entry dependency blocks, marker, per-entry strings blocks. Reject non-ASCII via `CP437.decode`. Validate every marker, the entry-type values (5/6/1/2), the magicA/magicB byte values (all 0x01), the magicB count (always 2), and the per-entry-kind strings count (Start/End=0, Stage=1, Asset=3 or 4).
 
-```text
-phase tag length-prefixed CP437 string
-record_count u32
-record_count records:
-  manifestPath length-prefixed CP437 string
-  loaderType length-prefixed CP437 string
-  sourcePak attribution: either an Int32 source-pak table index or a
-    length-prefixed CP437 string; the parser observes the fixture and
-    locks the mode for both reads and writes
-phase footer (the per-phase trailing bytes observed in the reference fixture;
-  pin the exact bytes once read from the fixture)
-```
-
-Bind the per-record flag-table bytes to records by global record index (across all phases, in write order) and store the result on `LoadListRecord.flags`. Parsers must not invent a flag-byte location; if the actual layout differs from the format-doc fingerprint, update Task 1's "Fixture facts" before proceeding.
-
-Validate every length, every marker, and the manifest terminator. Reject non-ASCII bytes via `CP437.decode`. Verify that the sum of per-phase record counts equals the manifest-level total record count and the flag-table length; mismatches must throw `LoadListError.mismatchedRecordCount`.
+Group asset records by the next Stage's text (per SnowPakTool's `CreateEntries`): assets read between Stage[N] and Stage[N+1] belong to Stage[N+1]'s phase. Empty groups produce empty arrays.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -767,8 +769,9 @@ func testClassifierRecognizesKnownEntryShapes() throws {
         sourcePak: "initial.pak"
     ))
     XCTAssertEqual(cls?.loaderType, "cls_loader")
-    XCTAssertEqual(cls?.phase, "DESC_BLOCK load")
+    XCTAssertEqual(cls?.phase, "CLASSES load")
     XCTAssertEqual(cls?.manifestPath, "<media>\\classes\\trucks\\hummer_h2.xml")
+    XCTAssertEqual(cls?.sourcePak, "initial.pak")
 
     let tpl = try LoadListClassifier.classify(.init(
         internalName: "[media]\\_templates\\trucks.xml",
@@ -783,6 +786,29 @@ func testClassifierRecognizesKnownEntryShapes() throws {
     ))
     XCTAssertEqual(ssl?.loaderType, "sslbundle")
     XCTAssertEqual(ssl?.phase, "SSL_INITIAL load")
+
+    let spdb = try LoadListClassifier.classify(.init(
+        internalName: "[ssl_cache]\\initial_debug.spdb",
+        sourcePak: "shared_debug.pak"
+    ))
+    XCTAssertEqual(spdb?.loaderType, "spdb")
+    XCTAssertEqual(spdb?.phase, "SSL_INITIAL load")
+
+    let mesh = try LoadListClassifier.classify(.init(
+        internalName: "[meshes]\\env_arrow",
+        sourcePak: "shared.pak"
+    ))
+    XCTAssertEqual(mesh?.loaderType, "mesh_loader")
+    XCTAssertEqual(mesh?.phase, "MESH load")
+    XCTAssertEqual(mesh?.manifestPath, "<meshes>\\env_arrow")
+
+    let sound = try LoadListClassifier.classify(.init(
+        internalName: "sound.sound_list",
+        sourcePak: "shared_sound.pak"
+    ))
+    XCTAssertEqual(sound?.loaderType, "sound_loader")
+    XCTAssertEqual(sound?.phase, "SOUND load")
+    XCTAssertEqual(sound?.manifestPath, "sound.sound_list")
 }
 
 func testClassifierSkipsManifestAndCacheBlock() throws {
@@ -792,6 +818,18 @@ func testClassifierSkipsManifestAndCacheBlock() throws {
     )))
     XCTAssertNil(try LoadListClassifier.classify(.init(
         internalName: "initial.cache_block",
+        sourcePak: "initial.pak"
+    )))
+    // Loose [strings] entries are unpacked from initial.cache_block but never
+    // appear in the reference manifest.
+    XCTAssertNil(try LoadListClassifier.classify(.init(
+        internalName: "[strings]\\strings_english.str",
+        sourcePak: "initial.pak"
+    )))
+    // [ssl_cache]\initial_pak appears in initial.pak as a stored entry but is
+    // not a manifest record.
+    XCTAssertNil(try LoadListClassifier.classify(.init(
+        internalName: "[ssl_cache]\\initial_pak",
         sourcePak: "initial.pak"
     )))
 }
