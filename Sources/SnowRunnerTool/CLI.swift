@@ -41,6 +41,7 @@ public enum CLI {
           pak unpack <pak> <dir>
           pak pack <dir> <pak>
           pak pack --mixed-cache-block <dir> <pak>
+          pak pack --rebuild-load-list [--mixed-cache-block] <dir> <pak> <shared.pak> <shared_sound.pak>
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -155,23 +156,7 @@ public enum CLI {
                 return CLIResult(exitCode: 0, stdout: "unpacked \(count) entries\n", stderr: "")
 
             case "pack":
-                if arguments.count == 4, arguments[1] == "--mixed-cache-block" {
-                    let count = try PakWriter.writeArchive(
-                        fromDirectory: URL(fileURLWithPath: arguments[2], isDirectory: true),
-                        to: URL(fileURLWithPath: arguments[3]),
-                        mixedCacheBlock: true
-                    )
-                    return CLIResult(exitCode: 0, stdout: "packed \(count) entries\n", stderr: "")
-                }
-
-                guard arguments.count == 3 else {
-                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak pack [--mixed-cache-block] <dir> <pak>\n")
-                }
-                let count = try PakWriter.writeArchive(
-                    fromDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true),
-                    to: URL(fileURLWithPath: arguments[2])
-                )
-                return CLIResult(exitCode: 0, stdout: "packed \(count) entries\n", stderr: "")
+                return try runPakPackCommand(Array(arguments.dropFirst()))
 
             case "verify-basic":
                 guard arguments.count == 2 else {
@@ -204,6 +189,61 @@ public enum CLI {
         } catch {
             return CLIResult(exitCode: 1, stdout: "", stderr: "\(error)\n")
         }
+    }
+
+    private static func runPakPackCommand(_ arguments: [String]) throws -> CLIResult {
+        var flags: Set<String> = []
+        var index = 0
+        while index < arguments.count, arguments[index].hasPrefix("--") {
+            let flag = arguments[index]
+            guard flag == "--mixed-cache-block" || flag == "--rebuild-load-list" else {
+                return CLIResult(exitCode: 2, stdout: "", stderr: pakPackUsage())
+            }
+            guard !flags.contains(flag) else {
+                return CLIResult(exitCode: 2, stdout: "", stderr: pakPackUsage())
+            }
+            flags.insert(flag)
+            index += 1
+        }
+
+        let positionals = Array(arguments[index...])
+        let rebuildLoadList = flags.contains("--rebuild-load-list")
+        let mixedCacheBlock = flags.contains("--mixed-cache-block")
+        let expectedCount = rebuildLoadList ? 4 : 2
+        guard positionals.count == expectedCount else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: pakPackUsage())
+        }
+
+        let directory = URL(fileURLWithPath: positionals[0], isDirectory: true)
+        let outputURL = URL(fileURLWithPath: positionals[1])
+
+        let count: Int
+        if rebuildLoadList {
+            count = try PakWriter.writeArchive(
+                fromDirectory: directory,
+                to: outputURL,
+                rebuildLoadList: true,
+                mixedCacheBlock: mixedCacheBlock,
+                sharedPak: URL(fileURLWithPath: positionals[2]),
+                sharedSoundPak: URL(fileURLWithPath: positionals[3])
+            )
+        } else if mixedCacheBlock {
+            count = try PakWriter.writeArchive(
+                fromDirectory: directory,
+                to: outputURL,
+                mixedCacheBlock: true
+            )
+        } else {
+            count = try PakWriter.writeArchive(
+                fromDirectory: directory,
+                to: outputURL
+            )
+        }
+        return CLIResult(exitCode: 0, stdout: "packed \(count) entries\n", stderr: "")
+    }
+
+    private static func pakPackUsage() -> String {
+        "Usage: snowrunner-tool pak pack [--rebuild-load-list] [--mixed-cache-block] <dir> <pak> [<shared.pak> <shared_sound.pak>]\n"
     }
 
     private static func inspectOutput(for archive: PakArchive) -> String {

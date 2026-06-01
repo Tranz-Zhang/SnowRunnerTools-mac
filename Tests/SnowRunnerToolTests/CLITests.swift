@@ -119,6 +119,94 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool load-list create-initial"))
     }
 
+    func testCLIPakPackRebuildLoadListProducesVerifiableArchive() throws {
+        guard let sharedPak = TestFixtures.optionalSharedPak() else {
+            throw XCTSkip("fixtures/shared.pak not present")
+        }
+        guard let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
+            throw XCTSkip("fixtures/shared_sound.pak not present")
+        }
+
+        let mixedRoot = try temporaryDirectory(named: "cli-rebuild-root")
+        let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("cli-rebuild.pak")
+
+        XCTAssertEqual(CLI.run(arguments: ["pak", "unpack", TestFixtures.initialPak.path, mixedRoot.path]).exitCode, 0)
+        XCTAssertEqual(CLI.run(arguments: [
+            "cache-block", "unpack",
+            mixedRoot.appendingPathComponent("initial.cache_block").path,
+            mixedRoot.path
+        ]).exitCode, 0)
+
+        let result = CLI.run(arguments: [
+            "pak", "pack",
+            "--rebuild-load-list", "--mixed-cache-block",
+            mixedRoot.path, candidate.path,
+            sharedPak.path,
+            sharedSoundPak.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("packed"))
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-basic", candidate.path]).exitCode, 0)
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", candidate.path]).exitCode, 0)
+    }
+
+    func testCLIPakPackRebuildLoadListAcceptsFlagsInEitherOrder() throws {
+        guard let sharedPak = TestFixtures.optionalSharedPak() else {
+            throw XCTSkip("fixtures/shared.pak not present")
+        }
+        guard let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
+            throw XCTSkip("fixtures/shared_sound.pak not present")
+        }
+
+        let mixedRoot = try temporaryDirectory(named: "cli-rebuild-flag-order")
+        let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("cli-rebuild-order.pak")
+
+        XCTAssertEqual(CLI.run(arguments: ["pak", "unpack", TestFixtures.initialPak.path, mixedRoot.path]).exitCode, 0)
+        XCTAssertEqual(CLI.run(arguments: [
+            "cache-block", "unpack",
+            mixedRoot.appendingPathComponent("initial.cache_block").path,
+            mixedRoot.path
+        ]).exitCode, 0)
+
+        let result = CLI.run(arguments: [
+            "pak", "pack",
+            "--mixed-cache-block", "--rebuild-load-list",
+            mixedRoot.path, candidate.path,
+            sharedPak.path,
+            sharedSoundPak.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0)
+    }
+
+    func testCLIPakPackRebuildLoadListRequiresFourPositionals() {
+        let result = CLI.run(arguments: [
+            "pak", "pack", "--rebuild-load-list", "dir", "out.pak"
+        ])
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool pak pack"))
+    }
+
+    func testCLIPakPackRejectsUnknownFlag() {
+        let result = CLI.run(arguments: [
+            "pak", "pack", "--unknown-flag", "dir", "out.pak"
+        ])
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool pak pack"))
+    }
+
+    func testCLIPakPackRejectsDuplicateFlag() {
+        let result = CLI.run(arguments: [
+            "pak", "pack", "--mixed-cache-block", "--mixed-cache-block", "dir", "out.pak"
+        ])
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool pak pack"))
+    }
+
     func testCLIPackMixedCacheBlockWritesVerifiableArchive() throws {
         let mixedRoot = try temporaryDirectory(named: "cli-mixed-root")
         let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("cli-mixed.pak")
