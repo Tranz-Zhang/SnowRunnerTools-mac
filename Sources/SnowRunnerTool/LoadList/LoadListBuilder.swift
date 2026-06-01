@@ -82,16 +82,9 @@ public enum LoadListBuilder {
         phase: String
     ) throws {
         var seenExact: Set<String> = []
-        var seenLower: Set<String> = []
         for record in records {
             if !seenExact.insert(record.manifestPath).inserted {
                 throw LoadListError.duplicateRecord(phase: phase, path: record.manifestPath)
-            }
-            if !seenLower.insert(record.manifestPath.lowercased()).inserted {
-                throw LoadListError.duplicateCaseInsensitiveRecord(
-                    phase: phase,
-                    path: record.manifestPath
-                )
             }
         }
     }

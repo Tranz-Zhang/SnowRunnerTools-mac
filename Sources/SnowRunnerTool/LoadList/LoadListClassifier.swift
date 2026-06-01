@@ -33,6 +33,9 @@ public enum LoadListClassifier {
         if name.hasPrefix("[strings]\\") {
             return nil
         }
+        if name.hasPrefix("[sound]\\") || name.hasPrefix("[ps]\\") || name.hasPrefix("[ps_common]\\") {
+            return nil
+        }
 
         let manifestPath = convertNamespaceBrackets(name)
 

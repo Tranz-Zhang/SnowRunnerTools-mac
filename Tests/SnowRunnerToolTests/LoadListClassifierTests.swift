@@ -71,6 +71,18 @@ final class LoadListClassifierTests: XCTestCase {
             internalName: "[ssl_cache]\\initial_pak",
             sourcePak: "initial.pak"
         )))
+        XCTAssertNil(try LoadListClassifier.classify(.init(
+            internalName: "[sound]\\actors\\actor_airplane_rnd_set\\actor_airplane_rnd__1.opus",
+            sourcePak: "shared_sound.pak"
+        )))
+        XCTAssertNil(try LoadListClassifier.classify(.init(
+            internalName: "[ps]\\steering_wheel_input_preset_thrustmaster_tx.sso",
+            sourcePak: "initial.pak"
+        )))
+        XCTAssertNil(try LoadListClassifier.classify(.init(
+            internalName: "[ps_common]\\geom_customizer_region.sso",
+            sourcePak: "initial.pak"
+        )))
     }
 
     func testClassifierThrowsForUnknownEntryShape() {

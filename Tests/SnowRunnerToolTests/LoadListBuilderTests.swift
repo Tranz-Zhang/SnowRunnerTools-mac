@@ -86,6 +86,27 @@ final class LoadListBuilderTests: XCTestCase {
         }
     }
 
+    func testBuilderAllowsCaseVariantRecordsObservedInReferenceManifest() throws {
+        let upper = LoadListRecord(
+            manifestPath: "<meshes>\\landmarks_AWMG_ac1610_lmk",
+            loaderType: "mesh_loader",
+            sourcePak: "shared.pak",
+            json: nil,
+            phase: "MESH load"
+        )
+        let lower = LoadListRecord(
+            manifestPath: "<meshes>\\landmarks_awmg_ac1610_lmk",
+            loaderType: "mesh_loader",
+            sourcePak: "shared.pak",
+            json: nil,
+            phase: "MESH load"
+        )
+
+        let manifest = try LoadListBuilder.buildManifest(records: [upper, lower])
+
+        XCTAssertEqual(manifest.recordsByPhase["MESH load", default: []].count, 2)
+    }
+
     func testBuilderInitialPakOnlyMatchesReferenceForInitialPakBackedPhases() throws {
         // The shared.pak/shared_sound.pak fixtures may be unavailable, but
         // initial.pak alone fully covers the SSL_INITIAL/sslbundle, TEMPLATES,
@@ -124,10 +145,10 @@ final class LoadListBuilderTests: XCTestCase {
         XCTAssertEqual(Set(actualSSL), Set(referenceSSL))
     }
 
-    func testBuilderProducesPhaseParityWithReferenceManifest() throws {
+    func testBuilderRuntimePaksContainReferenceManifestRecordsTheyCanSupply() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak(),
               let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared.pak and fixtures/shared_sound.pak required for phase-parity test")
+            throw XCTSkip("fixtures/shared.pak and fixtures/shared_sound.pak required for runtime-superset test")
         }
 
         let referenceURL = try TestFixtures.extractPakLoadList(from: TestFixtures.initialPak)
@@ -140,9 +161,16 @@ final class LoadListBuilderTests: XCTestCase {
         ))
 
         for phase in LoadListConstants.phasesInWriteOrder {
-            let expected = Set((reference.recordsByPhase[phase] ?? []).map(\.manifestPath))
+            // Runtime shared.pak/shared_sound.pak can be a superset of the
+            // original base-game fixtures. Require all records that can be
+            // supplied by the available inputs, but do not fail on extra
+            // runtime/DLC records or records that require missing shared_debug.pak.
+            let expected = Set((reference.recordsByPhase[phase] ?? [])
+                .filter { $0.sourcePak != "shared_debug.pak" }
+                .map(\.manifestPath))
             let actual = Set((manifest.recordsByPhase[phase] ?? []).map(\.manifestPath))
-            XCTAssertEqual(actual, expected, phase)
+            let missing = expected.subtracting(actual)
+            XCTAssertTrue(missing.isEmpty, "\(phase) missing records: \(Array(missing.prefix(10)))")
         }
     }
 }

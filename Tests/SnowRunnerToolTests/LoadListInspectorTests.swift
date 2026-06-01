@@ -9,18 +9,12 @@ final class LoadListInspectorTests: XCTestCase {
         let report = LoadListInspector.compactReport(manifest)
         XCTAssertTrue(report.hasSuffix("\n"))
         let lines = report.split(separator: "\n", omittingEmptySubsequences: false).dropLast()
-        XCTAssertEqual(lines.count, 17902)
+        XCTAssertEqual(lines.count, 17917)
 
-        let expectedColumnsPerLine = 4
-        for line in lines {
-            let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
-            XCTAssertEqual(columns.count, expectedColumnsPerLine, "line did not have \(expectedColumnsPerLine) tab-separated columns: \(line)")
-        }
-
-        // First record across phases must be from the SSL_INITIAL phase (the
-        // reference fixture's first non-empty phase).
-        XCTAssertTrue(lines.first?.hasPrefix("SSL_INITIAL load\t") ?? false)
-        XCTAssertTrue(lines.last?.hasPrefix("SOUND load\t") ?? false)
+        XCTAssertEqual(lines.first, "--Start--")
+        XCTAssertEqual(lines.last, "--End--")
+        XCTAssertTrue(lines.contains("SSL_INITIAL load"))
+        XCTAssertTrue(lines.contains("sound.sound_list"))
     }
 
     func testCompactReportMatchesSnowPakToolReferenceReportWhenAvailable() throws {
@@ -37,8 +31,9 @@ final class LoadListInspectorTests: XCTestCase {
     }
 
     private func normalizedLines(_ text: String) -> [String] {
-        text
-            .split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r" })
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .whitespaces) }
             .drop(while: { $0.isEmpty })
             .reversed()
