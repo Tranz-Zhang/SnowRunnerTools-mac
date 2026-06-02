@@ -123,12 +123,16 @@ public enum LoadListBuilder {
             let groupHead = entries.count   // first asset index for this phase
             let assets = byPhase[phase] ?? []
             for record in assets {
+                var strings = [record.manifestPath, record.loaderType, record.sourcePak]
+                if let json = record.json {
+                    strings.append(json)
+                }
                 entries.append(LoadListEntry(
                     kind: .asset,
                     dependsOn: [Int32(anchorIndex)],
-                    magicA: [0x01, 0x01, 0x01],
+                    magicA: Array(repeating: 0x01, count: strings.count),
                     magicB: [0x01, 0x01],
-                    strings: [record.manifestPath, record.loaderType, record.sourcePak]
+                    strings: strings
                 ))
             }
             let stageIndex = entries.count

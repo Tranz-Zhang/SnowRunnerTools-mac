@@ -110,6 +110,62 @@ public enum LoadListClassifier {
         throw LoadListError.invalidManifestPath(name)
     }
 
+    /// Classifier for mod entries that have already been mapped into the
+    /// `initial.pak` runtime namespace. It preserves the strict full-rebuild
+    /// classifier while allowing v1 mod payloads that intentionally do not get
+    /// load-list records.
+    public static func classifyMergedInitialModEntry(_ internalName: String) throws -> LoadListRecord? {
+        if internalName.hasPrefix("[textures]\\") || internalName.hasPrefix("[ui]\\") {
+            return nil
+        }
+
+        let manifestPath = convertNamespaceBrackets(internalName)
+
+        if manifestPath.hasPrefix("<media>\\_templates\\"), manifestPath.hasSuffix(".xml") {
+            return LoadListRecord(
+                manifestPath: manifestPath,
+                loaderType: "tpl_loader",
+                sourcePak: "initial.pak",
+                json: nil,
+                phase: "TEMPLATES load"
+            )
+        }
+
+        if manifestPath.hasPrefix("<media>\\"),
+           manifestPath.hasSuffix(".xml"),
+           manifestPath.contains("\\classes\\") {
+            return LoadListRecord(
+                manifestPath: manifestPath,
+                loaderType: "cls_loader",
+                sourcePak: "initial.pak",
+                json: nil,
+                phase: "CLASSES load"
+            )
+        }
+
+        if manifestPath.hasPrefix("<ssl_cache>\\"), manifestPath.hasSuffix(".sslbundle") {
+            return LoadListRecord(
+                manifestPath: manifestPath,
+                loaderType: "sslbundle",
+                sourcePak: "initial.pak",
+                json: nil,
+                phase: "SSL_INITIAL load"
+            )
+        }
+
+        if manifestPath.hasPrefix("<meshes>\\") {
+            return LoadListRecord(
+                manifestPath: manifestPath,
+                loaderType: "mesh_loader",
+                sourcePak: "initial.pak",
+                json: nil,
+                phase: "MESH load"
+            )
+        }
+
+        throw LoadListError.invalidManifestPath(internalName)
+    }
+
     /// Convert `[namespace]\rest` to `<namespace>\rest`. Leaves paths without
     /// a leading bracketed namespace unchanged.
     private static func convertNamespaceBrackets(_ name: String) -> String {

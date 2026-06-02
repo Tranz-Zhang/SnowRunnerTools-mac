@@ -135,7 +135,7 @@ public enum PakWriter {
 
         for source in fileSources {
             let nameBytes = try checkedNameBytes(source.internalName)
-            let uncompressed = try Data(contentsOf: source.fileURL)
+            let uncompressed = try source.readData()
             let method = compressionMethod(for: source.internalName)
             let payload = method == .stored ? uncompressed : try PakDeflater.deflateRaw(uncompressed)
             let record = WrittenEntry(

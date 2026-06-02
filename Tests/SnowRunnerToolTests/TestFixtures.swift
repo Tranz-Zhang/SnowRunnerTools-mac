@@ -9,6 +9,10 @@ enum TestFixtures {
 
     static let initialPak = root.appendingPathComponent("fixtures/initial.pak")
     static let initialRepackedPak = root.appendingPathComponent("fixtures/initial.repacked.pak")
+    static let loadstarJbeModPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.1/loadstar_1700_jbe.pak")
+    static let loadstarJbePcPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.1/pc.pak")
+    static let rootLoadstarJbeModPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe.pak")
+    static let rootLoadstarJbePcPak = root.appendingPathComponent("fixtures/pc.pak")
 
     static func extractInitialCacheBlock(from pakURL: URL) throws -> URL {
         let archive = try PakReader.readArchive(at: pakURL)
@@ -46,6 +50,20 @@ enum TestFixtures {
     static func optionalSharedSoundPak() -> URL? {
         let url = root.appendingPathComponent("fixtures/shared_sound.pak")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    static func optionalLoadstarJbeModPak() -> URL? {
+        if FileManager.default.fileExists(atPath: loadstarJbeModPak.path) {
+            return loadstarJbeModPak
+        }
+        return FileManager.default.fileExists(atPath: rootLoadstarJbeModPak.path) ? rootLoadstarJbeModPak : nil
+    }
+
+    static func optionalLoadstarJbePcPak() -> URL? {
+        if FileManager.default.fileExists(atPath: loadstarJbePcPak.path) {
+            return loadstarJbePcPak
+        }
+        return FileManager.default.fileExists(atPath: rootLoadstarJbePcPak.path) ? rootLoadstarJbePcPak : nil
     }
 }
 

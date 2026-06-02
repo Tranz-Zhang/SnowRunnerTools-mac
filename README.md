@@ -10,6 +10,7 @@ The current implementation can:
 - Unpack and rebuild `initial.cache_block`.
 - Inspect and rebuild `pak.load_list`.
 - Generate a runtime-validation `initial.pak` with a rebuilt load list.
+- Merge supported PC mod PAKs into an `initial.pak` candidate.
 
 ## Requirements
 
@@ -62,6 +63,33 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snow
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list create-initial /tmp/pak.load_list validation/input/initial.pak validation/input/shared.pak validation/input/shared_sound.pak
 ```
 
+Merge a supported PC mod package into an `initial.pak` candidate:
+
+```bash
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache \
+swift run snowrunner-tool pak merge-mod \
+  --allow-overwrite \
+  --report validation/output/loadstar-merge-report.md \
+  validation/input/initial.pak \
+  validation/output/initial.loadstar-jbe.pak \
+  fixtures/loadstar_1700_jbe.pak \
+  fixtures/pc.pak
+```
+
+Use `--dry-run` first to print the mapping, collision, and load-list summary
+without writing an output PAK. The command refuses in-place writes; back up the
+game's original `initial.pak` before manually copying a verified candidate into
+the game directory.
+
+First-version mod merge support is intentionally narrow:
+
+```text
+<mod>.pak: classes/...           -> [media]\classes\...
+<mod>.pak: prebuild/meshes/...   -> [meshes]\...
+<mod>.pak: ui/textures/...       -> [textures]\...
+pc.pak:    prebuild/textures/... -> [textures]\...
+```
+
 ## Runtime Validation
 
 `validation/` is the local workspace for game-runtime validation. It is ignored
@@ -81,12 +109,20 @@ Generate a rebuilt runtime candidate:
 scripts/phase4-runtime-validation.sh
 ```
 
+Generate a Loadstar JBE mod-merge candidate:
+
+```bash
+scripts/mod-merge-loadstar-validation.sh
+```
+
 The script writes:
 
 ```text
 validation/output/initial.pak
 validation/output/created.load_list
 validation/output/inspect.txt
+validation/output/initial.loadstar-jbe.pak
+validation/output/loadstar-merge-report.md
 ```
 
 `validation/output/initial.pak` is the candidate to copy into the game for

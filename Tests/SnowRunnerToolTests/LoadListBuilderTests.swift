@@ -86,6 +86,23 @@ final class LoadListBuilderTests: XCTestCase {
         }
     }
 
+    func testBuilderPreservesAssetJsonString() throws {
+        let record = LoadListRecord(
+            manifestPath: "<media>\\classes\\trucks\\json_truck.xml",
+            loaderType: "cls_loader",
+            sourcePak: "initial.pak",
+            json: "{\"priority\":1}",
+            phase: "CLASSES load"
+        )
+
+        let manifest = try LoadListBuilder.buildManifest(records: [record])
+        let bytes = try LoadListWriter.encodeManifest(manifest)
+        let parsed = try LoadListReader.readManifest(data: bytes)
+        let parsedRecord = parsed.recordsByPhase["CLASSES load"]?.first
+
+        XCTAssertEqual(parsedRecord?.json, "{\"priority\":1}")
+    }
+
     func testBuilderAllowsCaseVariantRecordsObservedInReferenceManifest() throws {
         let upper = LoadListRecord(
             manifestPath: "<meshes>\\landmarks_AWMG_ac1610_lmk",

@@ -47,11 +47,18 @@ pc.pak
 Namespace mapping:
 
 ```text
-classes/<path>             -> [media]\classes\<path>
-prebuild/meshes/<path>     -> [meshes]\<path>
-prebuild/textures/<path>   -> [textures]\<path>
-ui/textures/<path>         -> [ui]\textures\<path>
+<mod>.pak: classes/<path>             -> [media]\classes\<path>
+<mod>.pak: prebuild/meshes/<path>     -> [meshes]\<path>
+<mod>.pak: ui/textures/<path>         -> [textures]\<path>
+pc.pak:    prebuild/textures/<path>   -> [textures]\<path>
 ```
+
+Archive role is determined by the input file basename for v1. A file named
+`pc.pak` is treated as the platform payload archive and may contain only
+`prebuild/textures/...`. Every other mod PAK is treated as the main mod archive
+and may contain only `classes/...`, `prebuild/meshes/...`, and
+`ui/textures/...`. This intentionally rejects `prebuild/textures/...` in a
+non-`pc.pak` archive until a fixture proves that shape.
 
 For the fixture inspected on 2026-06-02:
 
@@ -119,12 +126,14 @@ Build a merge pipeline that never relies on temporary extraction as the source o
 ```text
 base initial.pak
   -> read base archive
+  -> validate base archive with verify-basic
+  -> parse embedded base pak.load_list
   -> expand base entries into PakFileSource payloads
   -> read mod archives
+  -> validate mod archives with verify-basic
   -> map mod entry names into runtime namespaces
   -> validate duplicates/collisions
   -> build merged source set
-  -> parse base pak.load_list
   -> overlay mod-managed load-list records
   -> serialize updated pak.load_list
   -> write output initial.pak with existing PakWriter layout policy
@@ -136,6 +145,14 @@ The writer may use temporary files internally because `PakWriter` currently acce
 The output path must be distinct from every input PAK path. Refuse in-place writes; users should explicitly copy a verified candidate into the game install during manual validation.
 
 Why this plan does not require `shared.pak` or `shared_sound.pak`: the base `initial.pak` already contains a complete `pak.load_list` with records whose source-pak fields point at `shared.pak`, `shared_sound.pak`, and `shared_debug.pak`. For mod merge, the shortest safe path is to parse those existing records, overlay only records affected by the merged mod, and serialize the updated record set with the existing manifest builder/writer. Re-reading the shared archives is only needed for a full manifest rebuild, which is not necessary for this feature and adds avoidable fixture/runtime dependencies.
+
+The updated `pak.load_list` is a canonical rebuild from semantic
+`LoadListRecord` values, not a byte-preserving edit of the original manifest.
+That is acceptable only if every parsed record is preserved semantically,
+including optional fourth-string `json` values. The current fixture appears to
+have `json == nil`, but the implementation must either preserve non-`nil`
+values in `LoadListBuilder.buildManifest(records:)` or assert and fail early if
+the parsed base manifest contains one.
 
 ## Merge Semantics
 
@@ -182,7 +199,7 @@ Do not add load-list records for these namespaces in the first implementation:
 [ui]\...
 ```
 
-Why: the current parsed reference manifest has `TEXTURE_PREPARE load` and `TEXTURE load` phase markers but no texture asset records in the committed compact report. The first implementation should include texture/UI bytes in the output PAK and rely on runtime references from XML/mesh data. If game validation proves missing texture metadata, add a second plan step that derives texture records from a known-good manifest or a game-accepted modded output.
+Why: the current parsed reference manifest has `TEXTURE_PREPARE load` and `TEXTURE load` phase markers but no texture asset records in the committed compact report. The first implementation should include texture bytes in the output PAK and rely on runtime references from XML/mesh data. Runtime validation on 2026-06-03 showed `ui/textures/... -> [ui]\textures\...` does not load for the Loadstar JBE fixture, while the corrected placement is `ui/textures/... -> [textures]\...`. If game validation proves missing texture metadata, add a second plan step that derives texture records from a known-good manifest or a game-accepted modded output.
 
 Required classifier change:
 
@@ -195,7 +212,7 @@ Required classifier change:
 
 ## Ordering And Verification
 
-The existing writer sorts unknown namespaces after the known initial.pak sections. The mod merge must promote `[meshes]`, `[textures]`, and `[ui]` from "unknown default" to explicit layout sections so the writer and verifier agree on the merged archive policy.
+The existing writer sorts unknown namespaces after the known initial.pak sections. The mod merge must promote `[meshes]` and `[textures]` from "unknown default" to explicit layout sections so the writer and verifier agree on the merged archive policy. `[ui]` remains a supported future namespace in the layout order, but the Loadstar JBE `ui/textures/...` payloads map to `[textures]\...` after runtime validation.
 
 Expected section order for the first merged writer:
 
@@ -209,7 +226,7 @@ initial.cache_block
 [strings]...
 [meshes]...
 [textures]...
-[ui]...
+[ui]... (future/unknown; not used by Loadstar JBE after runtime validation)
 other supported future namespaces...
 ```
 
@@ -258,10 +275,16 @@ Tests/SnowRunnerToolTests/ModMergeCLITests.swift
 
 - [ ] **Step 2: Add `ModArchiveMapper`**
   - Read central-directory entries from a mod PAK using the existing `PakReader`.
-  - Reject directory entries and encrypted/data-descriptor/ZIP64 entries through existing reader behavior.
+  - Run `PakVerifier.verifyBasic` on each mod PAK before mapping and fail on any issue.
+  - Add mapper-level guards for unsupported flags and directory names before payload reads; `PakReader` exposes these fields but does not reject every invalid shape by itself.
   - Map supported paths with the table above.
+  - Determine archive role from the basename:
+    - `pc.pak` accepts only `prebuild/textures/...`.
+    - every other mod PAK accepts only `classes/...`, `prebuild/meshes/...`, and `ui/textures/...`.
   - Preserve payload bytes by reading uncompressed payloads through `PakReader`.
   - Throw `unsupportedModPath` for any path outside supported prefixes.
+  - Test that `prebuild/textures/...` in a non-`pc.pak` archive is rejected.
+  - Test that a non-texture path in `pc.pak` is rejected.
   - Test exact mapped names for representative entries.
   - Test the Loadstar fixture maps 109 entries from `loadstar_1700_jbe.pak` and 42 entries from `pc.pak`.
 
@@ -292,21 +315,23 @@ Tests/SnowRunnerToolTests/ModMergeCLITests.swift
   - For `[meshes]\...` from merged `initial.pak`, emit `mesh_loader / initial.pak / MESH load`.
   - Add tolerant merge classification so `[textures]\...` and `[ui]\...` return `nil`.
   - Add tests proving base manifest records are preserved without reclassifying shared/sound/debug records.
+  - Add a test that parsed records with a non-`nil` fourth-string `json` value are either preserved by `LoadListBuilder.buildManifest(records:)` or rejected by the overlay before rebuilding.
 
 - [ ] **Step 6: Overlay mod records onto the base manifest**
   - Parse `pak.load_list` from the base `initial.pak`.
+  - Before planning any writes, run `PakVerifier.verifyBasic` on the base archive and fail if the embedded `pak.load_list` cannot be parsed.
   - Build mod-managed records only from mapped mod entries.
-  - Preserve every unrelated base manifest record as parsed `LoadListRecord` data.
+  - Preserve every unrelated base manifest record semantically as parsed `LoadListRecord` data, including `loaderType`, `sourcePak`, `phase`, and `json`.
   - Replace base manifest records with the same manifest path when the mod supplies a record for that path.
   - Add new mod manifest records when no base record exists.
   - Feed the final record set to `LoadListBuilder.buildManifest(records:)`; do not hand-edit binary manifest bytes.
+  - If `LoadListBuilder.buildManifest(records:)` still cannot emit non-`nil` `json` strings, assert that all parsed base records have `json == nil` and fail early with a specific error if not.
   - Preserve existing `nil` classifications for mapped `[textures]` and `[ui]`.
   - Reject only mod paths that should be load-list-managed but have no rule.
   - Acceptance for Loadstar fixture:
     - 87 mapped `[media]\classes\...` entries appear as `cls_loader / initial.pak`.
     - 19 mapped `[meshes]\...` entries appear as `mesh_loader / initial.pak`.
-    - 42 `[textures]\...` entries produce no load-list records.
-    - 3 `[ui]\textures\...` entries produce no load-list records.
+    - 45 `[textures]\...` entries produce no load-list records (42 from `pc.pak`, 3 from `ui/textures/...`).
     - 106 mod-managed records are considered.
     - 98 net-new records are expected before any source-override adjustment.
     - Existing base records for `shared.pak`, `shared_sound.pak`, and `shared_debug.pak` remain present unless explicitly replaced by a mod-managed manifest path.
@@ -335,6 +360,7 @@ written: validation/output/initial.loadstar-jbe.pak
 ```
 
 - [ ] **Step 9: Add verification**
+  - Before writing, confirm the base archive passed `verify-basic` and the base `pak.load_list` parsed successfully.
   - After writing, run `PakVerifier.verifyBasic`.
   - Run `PakVerifier.verifySnowPakLayout`.
   - Fail the command if either verifier reports issues.
@@ -388,13 +414,13 @@ Automated:
   - `[media]\classes\trucks\international_loadstar_1700.xml`
   - `[meshes]\wheels_PT67_Tire`
   - `[textures]\pct\wheels_PT67_Tire_mat__d_a.pct`
-  - `[ui]\textures\shopImg1700Loadstar.png`
+  - `[textures]\shopImg1700Loadstar.png`
 - Generated `pak.load_list` contains:
   - `<media>\classes\trucks\international_loadstar_1700.xml`, `cls_loader`, `initial.pak`
   - `<meshes>\wheels_PT67_Tire`, `mesh_loader`, `initial.pak`
 - Generated `pak.load_list` does not contain records for:
   - `<textures>\pct\wheels_PT67_Tire_mat__d_a.pct`
-  - `<ui>\textures\shopImg1700Loadstar.png`
+  - `<textures>\shopImg1700Loadstar.png`
 
 Manual:
 
@@ -407,7 +433,7 @@ Manual:
 - **Command writes a valid PAK but game ignores the truck:** missing or wrong `cls_loader` records in `pak.load_list`.
 - **Truck appears but model is missing:** `[meshes]` entries missing, wrongly named, or mesh load-list source-pak is wrong.
 - **Model appears but textures are missing:** `[textures]` mapping is wrong or texture metadata is required after all.
-- **UI icons missing:** `[ui]\textures` mapping is wrong, or UI assets belong in another namespace/cache.
+- **UI icons missing:** `[textures]` mapping is wrong for UI-origin payloads, texture metadata is required, or UI assets belong in cache-block.
 - **Game fails before menu:** malformed `pak.load_list`, broken XML overwrite, or unsupported resource path collision.
 - **Verifier fails:** outer PAK writer/layout regression; fix before runtime testing.
 
@@ -437,20 +463,20 @@ Follow-up trigger:
 
 Decision for v1:
 
-- Map `ui/textures/...` to `[ui]\textures\...`.
+- Map `ui/textures/...` to `[textures]\...`.
 - Include UI payloads in the outer `initial.pak`.
 - Do not add UI texture records to `pak.load_list`.
 - Do not move UI assets into `initial.cache_block`.
 
 Why:
 
-- The mod package path is explicit (`ui/textures/...`), and the current tool has no evidence that UI images require cache-block placement.
+- Runtime validation on 2026-06-03 showed `[ui]\textures\...` placement failed to load for the Loadstar JBE fixture, and the next grounded placement is the shared texture namespace.
 - Moving these into cache-block would add a second variable to the first runtime test.
 
 Follow-up trigger:
 
-- If the truck works but JBE icons/images are missing, create a small experiment that builds two candidates:
-  - outer PAK `[ui]\textures\...`
+- If the truck works but JBE icons/images are still missing, create a small experiment that builds two candidates:
+  - outer PAK `[textures]\...` with texture metadata discovery
   - cache-block-backed UI placement
 - Compare only UI behavior; do not change class/mesh logic during that experiment.
 
@@ -458,8 +484,10 @@ Follow-up trigger:
 
 Decision for v1:
 
+- Treat only a file whose basename is exactly `pc.pak` as the platform texture archive.
 - Support only `prebuild/textures/...` in `pc.pak`.
 - Fail clearly on any other `pc.pak` path.
+- Reject `prebuild/textures/...` in non-`pc.pak` archives until a fixture proves that shape.
 
 Why:
 

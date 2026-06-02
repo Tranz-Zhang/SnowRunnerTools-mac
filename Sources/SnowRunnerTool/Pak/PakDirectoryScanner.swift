@@ -2,11 +2,45 @@ import Foundation
 
 public struct PakFileSource: Equatable {
     public let internalName: String
-    public let fileURL: URL
+    public let payload: PakSourcePayload
 
     public init(internalName: String, fileURL: URL) {
         self.internalName = internalName
-        self.fileURL = fileURL
+        self.payload = .fileURL(fileURL)
+    }
+
+    public init(internalName: String, data: Data) {
+        self.internalName = internalName
+        self.payload = .data(data)
+    }
+
+    public var fileURL: URL? {
+        guard case let .fileURL(url) = payload else { return nil }
+        return url
+    }
+
+    public func readData() throws -> Data {
+        switch payload {
+        case let .fileURL(url):
+            return try Data(contentsOf: url)
+        case let .data(data):
+            return data
+        }
+    }
+}
+
+public enum PakSourcePayload: Equatable {
+    case fileURL(URL)
+    case data(Data)
+}
+
+public struct PakSortKey: Equatable {
+    public let bucket: Int
+    public let lowercased: String
+
+    public init(bucket: Int, lowercased: String) {
+        self.bucket = bucket
+        self.lowercased = lowercased
     }
 }
 
@@ -51,13 +85,19 @@ public enum PakDirectoryScanner {
             sources.append(PakFileSource(internalName: internalName, fileURL: fileURL))
         }
 
-        let combinedSources = sources + additionalFileSources
-        try PakPath.validatePackInput(internalNames: combinedSources.map(\.internalName))
-        guard combinedSources.contains(where: { $0.internalName == "pak.load_list" }) else {
+        return try sortedPackSources(sources + additionalFileSources, requirePakLoadList: true)
+    }
+
+    public static func sortedPackSources(
+        _ sources: [PakFileSource],
+        requirePakLoadList: Bool = true
+    ) throws -> [PakFileSource] {
+        try PakPath.validatePackInput(internalNames: sources.map(\.internalName))
+        if requirePakLoadList && !sources.contains(where: { $0.internalName == "pak.load_list" }) {
             throw PakWriterError.missingPakLoadList
         }
 
-        return combinedSources.sorted { left, right in
+        return sources.sorted { left, right in
             let leftKey = writerSortKey(left.internalName)
             let rightKey = writerSortKey(right.internalName)
             if leftKey.bucket != rightKey.bucket {
@@ -70,28 +110,37 @@ public enum PakDirectoryScanner {
         }
     }
 
-    private static func writerSortKey(_ name: String) -> (bucket: Int, lowercased: String) {
+    public static func writerSortKey(_ name: String) -> PakSortKey {
         if name == "pak.load_list" {
-            return (0, "")
+            return PakSortKey(bucket: 0, lowercased: "")
         }
         if name == "initial.cache_block" {
-            return (1, "")
+            return PakSortKey(bucket: 1, lowercased: "")
         }
         if name.hasPrefix("[media]\\classes") {
-            return (2, name.lowercased())
+            return PakSortKey(bucket: 2, lowercased: name.lowercased())
         }
         if name.hasPrefix("[media]\\_dlc") {
-            return (3, name.lowercased())
+            return PakSortKey(bucket: 3, lowercased: name.lowercased())
         }
         if name.hasPrefix("[media]\\_templates") {
-            return (4, name.lowercased())
+            return PakSortKey(bucket: 4, lowercased: name.lowercased())
         }
         if name.hasPrefix("[ssl_cache]") {
-            return (5, name.lowercased())
+            return PakSortKey(bucket: 5, lowercased: name.lowercased())
         }
         if name.hasPrefix("[strings]") {
-            return (6, name.lowercased())
+            return PakSortKey(bucket: 6, lowercased: name.lowercased())
         }
-        return (7, name.lowercased())
+        if name.hasPrefix("[meshes]") {
+            return PakSortKey(bucket: 7, lowercased: name.lowercased())
+        }
+        if name.hasPrefix("[textures]") {
+            return PakSortKey(bucket: 8, lowercased: name.lowercased())
+        }
+        if name.hasPrefix("[ui]") {
+            return PakSortKey(bucket: 9, lowercased: name.lowercased())
+        }
+        return PakSortKey(bucket: 10, lowercased: name.lowercased())
     }
 }

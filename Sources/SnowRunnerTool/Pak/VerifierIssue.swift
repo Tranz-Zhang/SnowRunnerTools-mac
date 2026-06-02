@@ -1,5 +1,5 @@
-public struct VerifierIssue: Equatable {
-    public enum Severity: String {
+public struct VerifierIssue: Equatable, Sendable {
+    public enum Severity: String, Sendable {
         case error
         case warning
     }

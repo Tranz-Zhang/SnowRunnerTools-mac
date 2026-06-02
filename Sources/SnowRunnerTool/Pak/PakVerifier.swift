@@ -11,7 +11,10 @@ public enum PakVerifier {
         "[media]\\_dlc",
         "[media]\\_templates",
         "[ssl_cache]",
-        "[strings]"
+        "[strings]",
+        "[meshes]",
+        "[textures]",
+        "[ui]"
     ]
 
     public static func verifyBasic(_ archive: PakArchive) throws -> [VerifierIssue] {

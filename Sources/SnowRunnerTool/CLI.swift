@@ -42,6 +42,7 @@ public enum CLI {
           pak pack <dir> <pak>
           pak pack --mixed-cache-block <dir> <pak>
           pak pack --rebuild-load-list [--mixed-cache-block] <dir> <pak> <shared.pak> <shared_sound.pak>
+          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] <base-initial.pak> <output-initial.pak> <mod.pak> [<mod.pak> ...]
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -158,6 +159,9 @@ public enum CLI {
             case "pack":
                 return try runPakPackCommand(Array(arguments.dropFirst()))
 
+            case "merge-mod":
+                return try runPakMergeModCommand(Array(arguments.dropFirst()))
+
             case "verify-basic":
                 guard arguments.count == 2 else {
                     return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak verify-basic <pak>\n")
@@ -244,6 +248,68 @@ public enum CLI {
 
     private static func pakPackUsage() -> String {
         "Usage: snowrunner-tool pak pack [--rebuild-load-list] [--mixed-cache-block] <dir> <pak> [<shared.pak> <shared_sound.pak>]\n"
+    }
+
+    private static func runPakMergeModCommand(_ arguments: [String]) throws -> CLIResult {
+        var allowOverwrite = false
+        var dryRun = false
+        var reportPath: String?
+        var positionals: [String] = []
+        var index = 0
+
+        while index < arguments.count {
+            let argument = arguments[index]
+            switch argument {
+            case "--allow-overwrite":
+                guard !allowOverwrite else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                allowOverwrite = true
+                index += 1
+            case "--dry-run":
+                guard !dryRun else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                dryRun = true
+                index += 1
+            case "--report":
+                guard reportPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                reportPath = arguments[index + 1]
+                index += 2
+            default:
+                if argument.hasPrefix("--") {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                positionals.append(argument)
+                index += 1
+            }
+        }
+
+        guard positionals.count >= 3 else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+        }
+
+        let base = URL(fileURLWithPath: positionals[0])
+        let output = URL(fileURLWithPath: positionals[1])
+        let mods = positionals.dropFirst(2).map { URL(fileURLWithPath: $0) }
+        let options = ModMergeOptions(
+            allowOverwrite: allowOverwrite,
+            dryRun: dryRun,
+            reportURL: reportPath.map { URL(fileURLWithPath: $0) }
+        )
+        let result = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: mods,
+            options: options
+        )
+        return CLIResult(exitCode: 0, stdout: ModMergeReporter.stdout(result: result), stderr: "")
+    }
+
+    private static func pakMergeModUsage() -> String {
+        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] <base-initial.pak> <output-initial.pak> <mod.pak> [<mod.pak> ...]\n"
     }
 
     private static func inspectOutput(for archive: PakArchive) -> String {
