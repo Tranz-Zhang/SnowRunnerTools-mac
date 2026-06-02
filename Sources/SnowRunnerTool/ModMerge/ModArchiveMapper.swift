@@ -1,4 +1,5 @@
 import Foundation
+import zlib
 
 public struct ModMappedEntry: Equatable {
     public let archiveURL: URL
@@ -24,6 +25,9 @@ public enum ModArchiveMapper {
         mapped.reserveCapacity(archive.entries.count)
 
         for entry in archive.entries {
+            if isDirectoryEntry(entry.name) {
+                continue
+            }
             let mappedName = try map(entry.name, role: role, archiveURL: url)
             let payload = try PakReader.readUncompressedPayload(entry: entry, in: archive)
             mapped.append(ModMappedEntry(
@@ -58,15 +62,19 @@ public enum ModArchiveMapper {
                     reason: "\(entry.name) has general-purpose bit flag \(entry.generalPurposeBitFlag)"
                 )
             }
-            if entry.name.hasSuffix("/") || entry.name.hasSuffix("\\") {
+            if isDirectoryEntry(entry.name) {
+                continue
+            }
+
+            let payload = try PakReader.readUncompressedPayload(entry: entry, in: archive)
+            let actual = crc32(payload)
+            guard actual == entry.crc32 else {
                 throw ModMergeError.invalidModArchive(
                     archive: archive.url.lastPathComponent,
-                    reason: "\(entry.name) is a directory entry"
+                    reason: "\(entry.name) CRC mismatch"
                 )
             }
         }
-
-        try PakReader.validatePayloadCRCs(in: archive)
     }
 
     private static func map(_ name: String, role: Role, archiveURL: URL) throws -> String {
@@ -90,7 +98,20 @@ public enum ModArchiveMapper {
             if let rest = consumePrefix("ui/textures/", from: path), !rest.isEmpty {
                 return "[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\")
             }
+            if let rest = consumePrefix("texts/", from: path), !rest.isEmpty, rest.hasSuffix(".str") {
+                return "[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\")
+            }
             throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
+        }
+    }
+
+    private static func isDirectoryEntry(_ name: String) -> Bool {
+        name.hasSuffix("/") || name.hasSuffix("\\")
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        data.withUnsafeBytes { buffer in
+            UInt32(zlib.crc32(0, buffer.bindMemory(to: Bytef.self).baseAddress, uInt(data.count)))
         }
     }
 

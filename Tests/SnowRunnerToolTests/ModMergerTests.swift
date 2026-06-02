@@ -29,7 +29,8 @@ final class ModMergerTests: XCTestCase {
         let mod = try makePak(named: "main-mod.pak", entries: [
             "classes/trucks/existing.xml": Data("<Truck mod=\"true\"/>".utf8),
             "prebuild/meshes/new_mesh": Data([1, 2, 3]),
-            "ui/textures/icon.png": Data([4, 5, 6])
+            "ui/textures/icon.png": Data([4, 5, 6]),
+            "texts/strings_english.str": Data("Merged strings".utf8)
         ])
         let pc = try makePak(named: "pc.pak", entries: [
             "prebuild/textures/pct/new_texture.pct": Data([7, 8, 9])
@@ -44,8 +45,11 @@ final class ModMergerTests: XCTestCase {
             options: ModMergeOptions(allowOverwrite: true)
         )
 
-        XCTAssertEqual(result.plan.mappedModEntryCount, 4)
-        XCTAssertEqual(result.plan.collisions, ["[media]\\classes\\trucks\\existing.xml"])
+        XCTAssertEqual(result.plan.mappedModEntryCount, 5)
+        XCTAssertEqual(result.plan.collisions, [
+            "[media]\\classes\\trucks\\existing.xml",
+            "[strings]\\strings_english.str"
+        ])
         XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 3)
         XCTAssertEqual(result.plan.loadListCandidateRecords.count, 2)
         XCTAssertEqual(result.plan.netNewLoadListRecordCount, 1)
@@ -56,6 +60,7 @@ final class ModMergerTests: XCTestCase {
         XCTAssertTrue(archive.entries.contains { $0.name == "[meshes]\\new_mesh" })
         XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct" })
         XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\icon.png" })
+        XCTAssertTrue(archive.entries.contains { $0.name == "[strings]\\strings_english.str" })
 
         let manifestEntry = try XCTUnwrap(archive.entries.first { $0.name == LoadListConstants.manifestEntryName })
         let manifestData = try PakReader.readUncompressedPayload(entry: manifestEntry, in: archive)
@@ -67,7 +72,7 @@ final class ModMergerTests: XCTestCase {
                 && $0.sourcePak == "initial.pak"
         })
         let textureRecords = manifest.phaseOrder.flatMap { manifest.recordsByPhase[$0] ?? [] }
-            .filter { $0.manifestPath.contains("<textures>") || $0.manifestPath.contains("<ui>") }
+            .filter { $0.manifestPath.contains("<textures>") || $0.manifestPath.contains("<ui>") || $0.manifestPath.contains("<strings>") }
         XCTAssertTrue(textureRecords.isEmpty)
     }
 }

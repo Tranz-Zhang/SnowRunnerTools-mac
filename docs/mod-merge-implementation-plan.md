@@ -39,6 +39,7 @@ Support the two-archive PC mod shape represented by the Loadstar JBE fixture:
   classes/...
   prebuild/meshes/...
   ui/textures/...
+  texts/*.str
 
 pc.pak
   prebuild/textures/...
@@ -50,14 +51,15 @@ Namespace mapping:
 <mod>.pak: classes/<path>             -> [media]\classes\<path>
 <mod>.pak: prebuild/meshes/<path>     -> [meshes]\<path>
 <mod>.pak: ui/textures/<path>         -> [textures]\<path>
+<mod>.pak: texts/<file>.str           -> [strings]\<file>.str
 pc.pak:    prebuild/textures/<path>   -> [textures]\<path>
 ```
 
 Archive role is determined by the input file basename for v1. A file named
 `pc.pak` is treated as the platform payload archive and may contain only
 `prebuild/textures/...`. Every other mod PAK is treated as the main mod archive
-and may contain only `classes/...`, `prebuild/meshes/...`, and
-`ui/textures/...`. This intentionally rejects `prebuild/textures/...` in a
+and may contain only `classes/...`, `prebuild/meshes/...`, `ui/textures/...`,
+and `texts/*.str`. This intentionally rejects `prebuild/textures/...` in a
 non-`pc.pak` archive until a fixture proves that shape.
 
 For the fixture inspected on 2026-06-02:
@@ -276,11 +278,12 @@ Tests/SnowRunnerToolTests/ModMergeCLITests.swift
 - [ ] **Step 2: Add `ModArchiveMapper`**
   - Read central-directory entries from a mod PAK using the existing `PakReader`.
   - Run `PakVerifier.verifyBasic` on each mod PAK before mapping and fail on any issue.
-  - Add mapper-level guards for unsupported flags and directory names before payload reads; `PakReader` exposes these fields but does not reject every invalid shape by itself.
+  - Add mapper-level guards for unsupported flags before payload reads; `PakReader` exposes these fields but does not reject every invalid shape by itself.
+  - Skip directory entries such as `texts/`.
   - Map supported paths with the table above.
   - Determine archive role from the basename:
     - `pc.pak` accepts only `prebuild/textures/...`.
-    - every other mod PAK accepts only `classes/...`, `prebuild/meshes/...`, and `ui/textures/...`.
+    - every other mod PAK accepts only `classes/...`, `prebuild/meshes/...`, `ui/textures/...`, and `texts/*.str`.
   - Preserve payload bytes by reading uncompressed payloads through `PakReader`.
   - Throw `unsupportedModPath` for any path outside supported prefixes.
   - Test that `prebuild/textures/...` in a non-`pc.pak` archive is rejected.
@@ -327,6 +330,7 @@ Tests/SnowRunnerToolTests/ModMergeCLITests.swift
   - Feed the final record set to `LoadListBuilder.buildManifest(records:)`; do not hand-edit binary manifest bytes.
   - If `LoadListBuilder.buildManifest(records:)` still cannot emit non-`nil` `json` strings, assert that all parsed base records have `json == nil` and fail early with a specific error if not.
   - Preserve existing `nil` classifications for mapped `[textures]` and `[ui]`.
+  - Preserve existing `nil` classifications for mapped `[strings]`.
   - Reject only mod paths that should be load-list-managed but have no rule.
   - Acceptance for Loadstar fixture:
     - 87 mapped `[media]\classes\...` entries appear as `cls_loader / initial.pak`.
@@ -537,7 +541,7 @@ Follow-up trigger:
   - `pak merge-mod` command shape
   - Loadstar validation example
   - warning to back up game files
-  - note that first support targets PC mod packages with `classes`, `prebuild/meshes`, `prebuild/textures`, and `ui/textures`
+  - note that first support targets PC mod packages with `classes`, `prebuild/meshes`, `prebuild/textures`, `ui/textures`, and `texts/*.str`
 
 - Add a short `docs/mod-merge-notes.md` after runtime validation with:
   - exact command used

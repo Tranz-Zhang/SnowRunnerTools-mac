@@ -115,7 +115,7 @@ public enum LoadListClassifier {
     /// classifier while allowing v1 mod payloads that intentionally do not get
     /// load-list records.
     public static func classifyMergedInitialModEntry(_ internalName: String) throws -> LoadListRecord? {
-        if internalName.hasPrefix("[textures]\\") || internalName.hasPrefix("[ui]\\") {
+        if internalName.hasPrefix("[textures]\\") || internalName.hasPrefix("[ui]\\") || internalName.hasPrefix("[strings]\\") {
             return nil
         }
 
