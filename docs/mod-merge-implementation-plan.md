@@ -11,7 +11,7 @@ fixtures/loadstar_1700_jbe_pc.1/loadstar_1700_jbe.pak
 fixtures/loadstar_1700_jbe_pc.1/pc.pak
 ```
 
-into a base-game `initial.pak` namespace, rebuild `pak.load_list`, repack a SnowPakTool-compatible `initial.pak`, and produce a candidate that can be manually validated in-game.
+into a base-game `initial.pak` namespace, update `pak.load_list`, repack a SnowPakTool-compatible `initial.pak`, and produce a candidate that can be manually validated in-game.
 
 The essence of the problem:
 
@@ -94,8 +94,6 @@ snowrunner-tool pak merge-mod [options] <base-initial.pak> <output-initial.pak> 
 Options:
 
 ```text
---shared <shared.pak>              Required for rebuilding base shared records.
---shared-sound <shared_sound.pak>  Required for rebuilding sound records.
 --allow-overwrite                  Allow mapped mod entries to replace existing base entries.
 --dry-run                          Print mapping/collision/load-list summary without writing output.
 --report <path>                    Write a merge report as UTF-8 Markdown.
@@ -106,8 +104,6 @@ Recommended first runtime command:
 ```bash
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache \
 swift run snowrunner-tool pak merge-mod \
-  --shared validation/input/shared.pak \
-  --shared-sound validation/input/shared_sound.pak \
   --allow-overwrite \
   --report validation/output/loadstar-merge-report.md \
   validation/input/initial.pak \
@@ -128,7 +124,9 @@ base initial.pak
   -> map mod entry names into runtime namespaces
   -> validate duplicates/collisions
   -> build merged source set
-  -> rebuild pak.load_list from merged entries + shared.pak + shared_sound.pak
+  -> parse base pak.load_list
+  -> overlay mod-managed load-list records
+  -> serialize updated pak.load_list
   -> write output initial.pak with existing PakWriter layout policy
   -> verify-basic + verify-snowpak-layout
 ```
@@ -136,6 +134,8 @@ base initial.pak
 The writer may use temporary files internally because `PakWriter` currently accepts file URLs. The public model should be archive-entry based so later commands can avoid unnecessary disk extraction.
 
 The output path must be distinct from every input PAK path. Refuse in-place writes; users should explicitly copy a verified candidate into the game install during manual validation.
+
+Why this plan does not require `shared.pak` or `shared_sound.pak`: the base `initial.pak` already contains a complete `pak.load_list` with records whose source-pak fields point at `shared.pak`, `shared_sound.pak`, and `shared_debug.pak`. For mod merge, the shortest safe path is to parse those existing records, overlay only records affected by the merged mod, and serialize the updated record set with the existing manifest builder/writer. Re-reading the shared archives is only needed for a full manifest rebuild, which is not necessary for this feature and adds avoidable fixture/runtime dependencies.
 
 ## Merge Semantics
 
@@ -160,7 +160,7 @@ mod-managed load-list records: 106  (87 class XML + 19 mesh payloads)
 net new load-list records:     98   (106 mod records - 8 replaced class records)
 ```
 
-If a mod-managed path also exists as a `shared.pak` load-list record, the merged `initial.pak` record wins for that manifest path and the shared record is dropped from the generated manifest. Report these as load-list source overrides. This prevents `LoadListBuilder` duplicate-record failures and matches the replacement intent: the merged `initial.pak` candidate should own the modded resource.
+If a mod-managed path already exists in the base manifest with a different source-pak field, the merged `initial.pak` record wins for that manifest path. Report these as load-list source overrides. This prevents duplicate manifest paths and matches the replacement intent: the merged `initial.pak` candidate should own the modded resource.
 
 ## Load-List Policy
 
@@ -187,9 +187,11 @@ Why: the current parsed reference manifest has `TEXTURE_PREPARE load` and `TEXTU
 Required classifier change:
 
 - Today `[meshes]\...` always classifies as `mesh_loader` with `sourcePak = "shared.pak"`.
-- For mod-merged entries inside `initial.pak`, `[meshes]\...` must classify as `mesh_loader` with `sourcePak = "initial.pak"`.
-- Preserve existing behavior when collecting records from `shared.pak`.
-- Add a tolerant classification path for merge-owned `initial.pak` records so `[textures]\...` and `[ui]\...` return `nil` instead of throwing. Keep strict behavior for commands/tests that are meant to discover unsupported load-list-managed paths.
+- Do not break the existing strict classifier used by full-rebuild tests.
+- Add a merge-specific classifier entry point for mapped mod entries inside `initial.pak`.
+- In that merge-specific classifier, `[meshes]\...` must emit `mesh_loader / initial.pak / MESH load`.
+- In that merge-specific classifier, `[textures]\...` and `[ui]\...` return `nil` instead of throwing.
+- Do not recalculate unrelated shared/sound/debug records; preserve them from the parsed base manifest.
 
 ## Ordering And Verification
 
@@ -219,6 +221,7 @@ Create:
 
 ```text
 Sources/SnowRunnerTool/ModMerge/ModArchiveMapper.swift
+Sources/SnowRunnerTool/ModMerge/ModLoadListOverlay.swift
 Sources/SnowRunnerTool/ModMerge/ModMergePlan.swift
 Sources/SnowRunnerTool/ModMerge/ModMergeReporter.swift
 Sources/SnowRunnerTool/ModMerge/ModMerger.swift
@@ -285,39 +288,39 @@ Tests/SnowRunnerToolTests/ModMergeCLITests.swift
   - Acceptance: existing pack/unpack tests still pass.
 
 - [ ] **Step 5: Extend load-list classification for merged initial meshes**
-  - Change mesh classification so source-pak attribution can be controlled by caller.
-  - For `[meshes]\...` from `shared.pak`, keep `mesh_loader / shared.pak / MESH load`.
+  - Add a merge-specific classifier entry point; do not change the default strict classifier behavior used by existing tests.
   - For `[meshes]\...` from merged `initial.pak`, emit `mesh_loader / initial.pak / MESH load`.
   - Add tolerant merge classification so `[textures]\...` and `[ui]\...` return `nil`.
-  - Add tests for both source-pak outcomes.
+  - Add tests proving base manifest records are preserved without reclassifying shared/sound/debug records.
 
-- [ ] **Step 6: Build merged manifest records**
-  - Collect records from:
-    - merged initial entries, including modded class XML and modded mesh entries
-    - `shared.pak`
-    - `shared_sound.pak`
-  - Preserve existing `nil` classifications for `pak.load_list`, `initial.cache_block`, `[strings]`, `[ps]`, `[ps_common]`, `[textures]`, and `[ui]`.
-  - Resolve duplicate manifest paths by letting merged `initial.pak` records replace records from `shared.pak` or `shared_sound.pak`.
-  - Reject only paths that should be load-list-managed but have no rule.
+- [ ] **Step 6: Overlay mod records onto the base manifest**
+  - Parse `pak.load_list` from the base `initial.pak`.
+  - Build mod-managed records only from mapped mod entries.
+  - Preserve every unrelated base manifest record as parsed `LoadListRecord` data.
+  - Replace base manifest records with the same manifest path when the mod supplies a record for that path.
+  - Add new mod manifest records when no base record exists.
+  - Feed the final record set to `LoadListBuilder.buildManifest(records:)`; do not hand-edit binary manifest bytes.
+  - Preserve existing `nil` classifications for mapped `[textures]` and `[ui]`.
+  - Reject only mod paths that should be load-list-managed but have no rule.
   - Acceptance for Loadstar fixture:
     - 87 mapped `[media]\classes\...` entries appear as `cls_loader / initial.pak`.
     - 19 mapped `[meshes]\...` entries appear as `mesh_loader / initial.pak`.
     - 42 `[textures]\...` entries produce no load-list records.
     - 3 `[ui]\textures\...` entries produce no load-list records.
     - 106 mod-managed records are considered.
-    - 98 net-new records are expected before any shared-source override adjustment.
+    - 98 net-new records are expected before any source-override adjustment.
+    - Existing base records for `shared.pak`, `shared_sound.pak`, and `shared_debug.pak` remain present unless explicitly replaced by a mod-managed manifest path.
 
 - [ ] **Step 7: Implement `ModMerger`**
   - Read base `initial.pak`.
   - Replace base entries with mapped mod entries only when `allowOverwrite` is true.
-  - Inject generated `pak.load_list`.
+  - Inject the updated `pak.load_list` produced by `ModLoadListOverlay`.
   - Write output through existing `PakWriter`.
   - Return a merge report model with counts and collision decisions.
 
 - [ ] **Step 8: Add CLI parsing**
   - Add usage text for `pak merge-mod`.
   - Support repeated mod PAK arguments.
-  - Require `--shared` and `--shared-sound`, including for `--dry-run`, so dry-run can report load-list effects and source overrides.
   - Reject output paths that equal the base input path or any mod input path.
   - Write `--report` if provided.
   - Print concise stdout:
@@ -326,7 +329,7 @@ Tests/SnowRunnerToolTests/ModMergeCLITests.swift
 merged 151 mod entries into initial.pak
 overwrote 8 existing entries
 mod-managed load-list records: 106
-net-new load-list records before shared overrides: 98
+net-new load-list records before source overrides: 98
 load-list source overrides: 0
 written: validation/output/initial.loadstar-jbe.pak
 ```
@@ -343,8 +346,6 @@ written: validation/output/initial.loadstar-jbe.pak
 
 ```text
 validation/input/initial.pak
-validation/input/shared.pak
-validation/input/shared_sound.pak
 fixtures/loadstar_1700_jbe_pc.1/loadstar_1700_jbe.pak
 fixtures/loadstar_1700_jbe_pc.1/pc.pak
 ```
@@ -380,7 +381,7 @@ Automated:
 - `pak merge-mod --dry-run ...` reports 151 mapped entries for the Loadstar fixture.
 - Without `--allow-overwrite`, the Loadstar merge fails and reports 8 collisions.
 - With `--allow-overwrite`, the Loadstar merge writes an output PAK.
-- The merge report shows 151 mapped entries, 8 replacements, 143 net-new outer PAK entries, 106 mod-managed load-list records, and 98 net-new load-list records before any shared-source override adjustment.
+- The merge report shows 151 mapped entries, 8 replacements, 143 net-new outer PAK entries, 106 mod-managed load-list records, and 98 net-new load-list records before any source-override adjustment.
 - Output PAK passes `verify-basic`.
 - Output PAK passes `verify-snowpak-layout`.
 - Output PAK contains:
@@ -410,13 +411,97 @@ Manual:
 - **Game fails before menu:** malformed `pak.load_list`, broken XML overwrite, or unsupported resource path collision.
 - **Verifier fails:** outer PAK writer/layout regression; fix before runtime testing.
 
-## Open Questions
+## Decisions And Follow-Up Questions
 
-- Do `[textures]` entries require load-list records in a current game build, or are they loaded by reference?
-- Do `[ui]\textures` entries belong in outer `initial.pak`, `initial.cache_block`, or another namespace for this target runtime?
-- Are mod `pc.pak` texture paths always `prebuild/textures/...`, or do other mods use additional PC payload roots?
-- Should future commands support multiple overwrite policies: `fail`, `allow`, `only-existing`, `only-new`?
-- Should a later version support loose extracted mod directories in addition to mod PAK files?
+These questions must not block the first implementation. Each one gets a first-version decision and a concrete follow-up trigger.
+
+### Texture Load Metadata
+
+Decision for v1:
+
+- Map `prebuild/textures/...` to `[textures]\...`.
+- Include texture payloads in the outer `initial.pak`.
+- Do not add texture records to `pak.load_list`.
+
+Why:
+
+- The parsed base manifest has `TEXTURE_PREPARE load` and `TEXTURE load` phase markers but no texture asset records in the committed compact report.
+- Adding invented texture loader records would be less grounded than shipping the texture bytes and validating the game behavior.
+
+Follow-up trigger:
+
+- If the truck loads but textures are missing, create a second focused plan: `docs/texture-load-metadata-plan.md`.
+- That plan should compare a known-good modded runtime output or game logs against this candidate before adding any texture loader rule.
+
+### UI Texture Placement
+
+Decision for v1:
+
+- Map `ui/textures/...` to `[ui]\textures\...`.
+- Include UI payloads in the outer `initial.pak`.
+- Do not add UI texture records to `pak.load_list`.
+- Do not move UI assets into `initial.cache_block`.
+
+Why:
+
+- The mod package path is explicit (`ui/textures/...`), and the current tool has no evidence that UI images require cache-block placement.
+- Moving these into cache-block would add a second variable to the first runtime test.
+
+Follow-up trigger:
+
+- If the truck works but JBE icons/images are missing, create a small experiment that builds two candidates:
+  - outer PAK `[ui]\textures\...`
+  - cache-block-backed UI placement
+- Compare only UI behavior; do not change class/mesh logic during that experiment.
+
+### Additional PC Payload Roots
+
+Decision for v1:
+
+- Support only `prebuild/textures/...` in `pc.pak`.
+- Fail clearly on any other `pc.pak` path.
+
+Why:
+
+- The Loadstar fixture only proves this path shape.
+- A clear failure is better than silently putting unknown payloads in the wrong namespace.
+
+Follow-up trigger:
+
+- When another mod fixture contains additional PC roots, add it as a new mapper test fixture and extend the mapping table from evidence.
+
+### Overwrite Policies
+
+Decision for v1:
+
+- Support one overwrite switch: `--allow-overwrite`.
+- Without it, any base-entry collision fails.
+- With it, all mapped mod collisions replace base entries.
+
+Why:
+
+- The Loadstar fixture is a replacement mod. Partial overwrite policy would create broken intermediate states.
+- More policies are useful only after the first merge path is proven.
+
+Follow-up trigger:
+
+- Add `--overwrite-policy fail|allow|only-existing|only-new` only if a real mod workflow needs selective replacement.
+
+### Loose Mod Directories
+
+Decision for v1:
+
+- Support mod PAK inputs only.
+- Do not support loose extracted mod directories yet.
+
+Why:
+
+- PAK inputs preserve the exact mod package names and make the mapper behavior testable.
+- Loose directories add filesystem ambiguity and duplicate-name edge cases that do not help validate the core merge.
+
+Follow-up trigger:
+
+- Add loose-directory support only after PAK-to-PAK merge passes game validation.
 
 ## Documentation Updates
 
