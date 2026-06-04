@@ -13,40 +13,43 @@ final class ModArchiveMapperTests: XCTestCase {
 
         let mapped = try ModArchiveMapper.mapArchive(at: pak)
 
-        XCTAssertEqual(Set(mapped.map(\.internalName)), [
-            "[media]\\classes\\trucks\\demo.xml",
-            "[meshes]\\demo_mesh",
-            "[textures]\\demo.png",
-            "[strings]\\strings_english.str"
-        ])
+        XCTAssertEqual(
+            Set(mapped.map { "\($0.targetArchive.rawValue):\($0.internalName)" }),
+            [
+                "initial.pak:[media]\\classes\\trucks\\demo.xml",
+                "initial.pak:[meshes]\\demo_mesh",
+                "shared_textures_base.pak:[textures]\\demo.png",
+                "initial.pak:[strings]\\strings_english.str"
+            ]
+        )
     }
 
-    func testMapperMapsPcPakTexturesOnly() throws {
-        let pak = try makePak(named: "pc.pak", entries: [
+    func testMapperMapsTexturePakByContentNotFilename() throws {
+        let pak = try makePak(named: "colorable_sideboards-flatbeds_pc.pak", entries: [
             "prebuild/textures/pct/demo.pct": Data([7, 8, 9])
         ])
 
         let mapped = try ModArchiveMapper.mapArchive(at: pak)
 
-        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct"])
+        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct_base"])
+        XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures])
     }
 
-    func testMapperRejectsTextureRootOutsidePcPak() throws {
-        let pak = try makePak(named: "main-mod.pak", entries: [
+    func testMapperMapsExactPcPakByContent() throws {
+        let pak = try makePak(named: "pc.pak", entries: [
             "prebuild/textures/pct/demo.pct": Data([1])
         ])
 
-        XCTAssertThrowsError(try ModArchiveMapper.mapArchive(at: pak)) { error in
-            guard case ModMergeError.unsupportedModPath = error else {
-                XCTFail("expected unsupportedModPath, got \(error)")
-                return
-            }
-        }
+        let mapped = try ModArchiveMapper.mapArchive(at: pak)
+
+        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct_base"])
+        XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures])
     }
 
-    func testMapperRejectsNonTexturePathInsidePcPak() throws {
-        let pak = try makePak(named: "pc.pak", entries: [
-            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+    func testMapperRejectsMixedTextureAndMainModArchive() throws {
+        let pak = try makePak(named: "main-mod.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8),
+            "prebuild/textures/pct/demo.pct": Data([1])
         ])
 
         XCTAssertThrowsError(try ModArchiveMapper.mapArchive(at: pak)) { error in

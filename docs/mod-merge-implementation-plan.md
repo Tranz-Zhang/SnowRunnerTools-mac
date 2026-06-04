@@ -1,5 +1,7 @@
 # SnowRunner Mod Merge Implementation Plan
 
+> **2026-06-04 update:** Texture placement from this original plan has been superseded. Current `pak merge-mod` writes two candidate outputs when texture entries are present: `--output-initial` for `initial.pak` and `--output-textures` for `shared_textures_base.pak`. Texture mod archives are detected by contents, not by the filename `pc.pak`; pure `prebuild/textures/...` archives map to `[textures]\...`, with `.pct` entries renamed to `.pct_base`.
+
 > **For agentic workers:** Implement this plan task-by-task. Keep checkbox status current. Do not skip the discovery gates; the fragile part is source-pak/load-list semantics, not writing ZIP bytes.
 
 ## Goal
@@ -97,7 +99,7 @@ These collisions are expected for this fixture, but they must still require an e
 Add one command:
 
 ```text
-snowrunner-tool pak merge-mod [options] <base-initial.pak> <output-initial.pak> <mod.pak> [<mod.pak> ...]
+snowrunner-tool pak merge-mod [options] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate.pak>] --mods <mod.pak> [<mod.pak> ...]
 ```
 
 Options:
@@ -484,14 +486,13 @@ Follow-up trigger:
   - cache-block-backed UI placement
 - Compare only UI behavior; do not change class/mesh logic during that experiment.
 
-### Additional PC Payload Roots
+### Additional Texture Payload Roots
 
 Decision for v1:
 
-- Treat only a file whose basename is exactly `pc.pak` as the platform texture archive.
-- Support only `prebuild/textures/...` in `pc.pak`.
-- Fail clearly on any other `pc.pak` path.
-- Reject `prebuild/textures/...` in non-`pc.pak` archives until a fixture proves that shape.
+- Treat any archive whose non-directory entries are all under `prebuild/textures/...` as a texture archive, regardless of filename.
+- Support `.pct` texture entries by writing them to `shared_textures_base.pak` as `.pct_base` entries.
+- Reject archives that mix `prebuild/textures/...` entries with main-mod payload roots until a fixture proves that shape is needed.
 
 Why:
 

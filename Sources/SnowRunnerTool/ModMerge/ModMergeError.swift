@@ -7,6 +7,7 @@ public enum ModMergeError: Error, CustomStringConvertible, Equatable {
     case conflictingMappedDuplicate(path: String)
     case outputPathMatchesInput(String)
     case missingBaseManifest
+    case missingTextureOutput
     case verificationFailed(name: String, issues: [VerifierIssue])
 
     public var description: String {
@@ -24,6 +25,8 @@ public enum ModMergeError: Error, CustomStringConvertible, Equatable {
             return "Output path must be distinct from every input PAK: \(path)"
         case .missingBaseManifest:
             return "Base initial.pak does not contain pak.load_list"
+        case .missingTextureOutput:
+            return "Texture merge requires --input-textures and --output-textures"
         case let .verificationFailed(name, issues):
             let details = issues.map { "\($0.code): \($0.message)" }.joined(separator: "\n")
             return "\(name) failed:\n\(details)"

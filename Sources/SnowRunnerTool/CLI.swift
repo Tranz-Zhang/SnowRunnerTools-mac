@@ -42,7 +42,7 @@ public enum CLI {
           pak pack <dir> <pak>
           pak pack --mixed-cache-block <dir> <pak>
           pak pack --rebuild-load-list [--mixed-cache-block] <dir> <pak> <shared.pak> <shared_sound.pak>
-          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] <base-initial.pak> <output-initial.pak> <mod.pak> [<mod.pak> ...]
+          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate.pak>] --mods <mod.pak> [<mod.pak> ...]
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -254,7 +254,11 @@ public enum CLI {
         var allowOverwrite = false
         var dryRun = false
         var reportPath: String?
-        var positionals: [String] = []
+        var inputInitialPath: String?
+        var outputInitialPath: String?
+        var inputTexturesPath: String?
+        var outputTexturesPath: String?
+        var modPaths: [String] = []
         var index = 0
 
         while index < arguments.count {
@@ -278,22 +282,53 @@ public enum CLI {
                 }
                 reportPath = arguments[index + 1]
                 index += 2
-            default:
-                if argument.hasPrefix("--") {
+            case "--input-initial":
+                guard inputInitialPath == nil, index + 1 < arguments.count else {
                     return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
                 }
-                positionals.append(argument)
-                index += 1
+                inputInitialPath = arguments[index + 1]
+                index += 2
+            case "--output-initial":
+                guard outputInitialPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                outputInitialPath = arguments[index + 1]
+                index += 2
+            case "--input-textures":
+                guard inputTexturesPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                inputTexturesPath = arguments[index + 1]
+                index += 2
+            case "--output-textures":
+                guard outputTexturesPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                outputTexturesPath = arguments[index + 1]
+                index += 2
+            case "--mods":
+                let remaining = Array(arguments[(index + 1)...])
+                guard !remaining.isEmpty, remaining.allSatisfy({ !$0.hasPrefix("--") }) else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                modPaths = remaining
+                index = arguments.count
+            default:
+                return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
             }
         }
 
-        guard positionals.count >= 3 else {
+        guard let inputInitialPath,
+              let outputInitialPath,
+              !modPaths.isEmpty else {
             return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
         }
 
-        let base = URL(fileURLWithPath: positionals[0])
-        let output = URL(fileURLWithPath: positionals[1])
-        let mods = positionals.dropFirst(2).map { URL(fileURLWithPath: $0) }
+        let base = URL(fileURLWithPath: inputInitialPath)
+        let output = URL(fileURLWithPath: outputInitialPath)
+        let inputTextures = inputTexturesPath.map { URL(fileURLWithPath: $0) }
+        let outputTextures = outputTexturesPath.map { URL(fileURLWithPath: $0) }
+        let mods = modPaths.map { URL(fileURLWithPath: $0) }
         let options = ModMergeOptions(
             allowOverwrite: allowOverwrite,
             dryRun: dryRun,
@@ -302,6 +337,8 @@ public enum CLI {
         let result = try ModMerger.merge(
             baseInitialPak: base,
             outputInitialPak: output,
+            baseSharedTexturesPak: inputTextures,
+            outputSharedTexturesPak: outputTextures,
             modPaks: mods,
             options: options
         )
@@ -309,7 +346,7 @@ public enum CLI {
     }
 
     private static func pakMergeModUsage() -> String {
-        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] <base-initial.pak> <output-initial.pak> <mod.pak> [<mod.pak> ...]\n"
+        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate.pak>] --mods <mod.pak> [<mod.pak> ...]\n"
     }
 
     private static func inspectOutput(for archive: PakArchive) -> String {

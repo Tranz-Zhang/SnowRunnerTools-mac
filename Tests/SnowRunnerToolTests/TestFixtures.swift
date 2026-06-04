@@ -12,7 +12,7 @@ enum TestFixtures {
     static let loadstarJbeModPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.1/loadstar_1700_jbe.pak")
     static let loadstarJbePcPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.1/pc.pak")
     static let rootLoadstarJbeModPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe.pak")
-    static let rootLoadstarJbePcPak = root.appendingPathComponent("fixtures/pc.pak")
+    static let rootLoadstarJbePcPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.pak")
     static let textPak = root.appendingPathComponent("fixtures/text.pak")
 
     static func extractInitialCacheBlock(from pakURL: URL) throws -> URL {

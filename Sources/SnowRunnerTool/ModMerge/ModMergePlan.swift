@@ -5,6 +5,9 @@ public struct ModMergePlan: Equatable {
     public let mappedModEntryCount: Int
     public let netNewOuterPakEntryCount: Int
     public let collisions: [String]
+    public let textureBaseEntryCount: Int
+    public let netNewTexturePakEntryCount: Int
+    public let textureCollisions: [String]
     public let duplicateIdenticalMappedNames: [String]
     public let loadListSourceOverrides: [ModLoadListSourceOverride]
     public let loadListCandidateRecords: [LoadListRecord]
@@ -14,7 +17,9 @@ public struct ModMergePlan: Equatable {
 public struct ModMergeResult: Equatable {
     public let plan: ModMergePlan
     public let outputURL: URL?
+    public let outputTexturesURL: URL?
     public let writtenEntryCount: Int?
+    public let writtenTextureEntryCount: Int?
 }
 
 public struct ModMergeOptions: Equatable {

@@ -3,16 +3,24 @@ import Foundation
 public enum ModMergeReporter {
     public static func stdout(result: ModMergeResult) -> String {
         var lines = [
-            "merged \(result.plan.mappedModEntryCount) mod entries into initial.pak",
-            "overwrote \(result.plan.collisions.count) existing entries",
+            "merged \(result.plan.mappedModEntryCount) mod entries",
+            "initial overwrites: \(result.plan.collisions.count)",
+            "texture overwrites: \(result.plan.textureCollisions.count)",
+            "net new initial PAK entries: \(result.plan.netNewOuterPakEntryCount)",
+            "net new texture PAK entries: \(result.plan.netNewTexturePakEntryCount)",
             "mod-managed load-list records: \(result.plan.loadListCandidateRecords.count)",
             "net-new load-list records before source overrides: \(result.plan.netNewLoadListRecordCount)",
             "load-list source overrides: \(result.plan.loadListSourceOverrides.count)"
         ]
         if let outputURL = result.outputURL {
-            lines.append("written: \(outputURL.path)")
+            lines.append("written initial: \(outputURL.path)")
         } else {
-            lines.append("dry-run: no output written")
+            lines.append("dry-run initial: no output written")
+        }
+        if let outputTexturesURL = result.outputTexturesURL {
+            lines.append("written textures: \(outputTexturesURL.path)")
+        } else if result.plan.textureBaseEntryCount > 0 || result.plan.netNewTexturePakEntryCount > 0 || !result.plan.textureCollisions.isEmpty {
+            lines.append("dry-run textures: no output written")
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -23,20 +31,28 @@ public enum ModMergeReporter {
             "# Mod Merge Report",
             "",
             "- mapped mod entries: \(plan.mappedModEntryCount)",
-            "- base entry replacements: \(plan.collisions.count)",
-            "- net new outer PAK entries: \(plan.netNewOuterPakEntryCount)",
+            "- initial entry replacements: \(plan.collisions.count)",
+            "- texture entry replacements: \(plan.textureCollisions.count)",
+            "- net new initial PAK entries: \(plan.netNewOuterPakEntryCount)",
+            "- net new texture PAK entries: \(plan.netNewTexturePakEntryCount)",
             "- mod-managed load-list records: \(plan.loadListCandidateRecords.count)",
             "- net-new load-list records before source overrides: \(plan.netNewLoadListRecordCount)",
             "- load-list source overrides: \(plan.loadListSourceOverrides.count)"
         ]
 
         if let outputURL = result.outputURL {
-            lines.append("- output: \(outputURL.path)")
+            lines.append("- initial output: \(outputURL.path)")
         } else {
-            lines.append("- output: dry-run")
+            lines.append("- initial output: dry-run")
+        }
+        if let outputTexturesURL = result.outputTexturesURL {
+            lines.append("- texture output: \(outputTexturesURL.path)")
+        } else if plan.textureBaseEntryCount > 0 || plan.netNewTexturePakEntryCount > 0 || !plan.textureCollisions.isEmpty {
+            lines.append("- texture output: dry-run")
         }
 
-        appendSection("Base Entry Replacements", values: plan.collisions, into: &lines)
+        appendSection("Initial Entry Replacements", values: plan.collisions, into: &lines)
+        appendSection("Texture Entry Replacements", values: plan.textureCollisions, into: &lines)
         appendSection("Identical Duplicate Mod Entries", values: plan.duplicateIdenticalMappedNames, into: &lines)
         appendSection(
             "Load-List Source Overrides",
