@@ -9,14 +9,13 @@ The current implementation can:
 - Unpack and repack `initial.pak` with SnowPakTool-compatible layout.
 - Unpack and rebuild `initial.cache_block`.
 - Inspect and rebuild `pak.load_list`.
-- Generate a runtime-validation `initial.pak` with a rebuilt load list.
 - Merge supported PC mod PAKs into an `initial.pak` candidate.
 
 ## Requirements
 
 - macOS with Xcode command line tools.
 - Swift Package Manager.
-- Local SnowRunner PAK files for runtime validation.
+- Local SnowRunner PAK files for commands that rebuild load lists or merge mods.
 
 ## Build And Test
 
@@ -60,7 +59,7 @@ Inspect and create `pak.load_list`:
 
 ```bash
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list inspect /tmp/snowrunner-initial/pak.load_list
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list create-initial /tmp/pak.load_list validation/input/initial.pak validation/input/shared.pak validation/input/shared_sound.pak
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool load-list create-initial /tmp/pak.load_list /path/to/initial.pak /path/to/shared.pak /path/to/shared_sound.pak
 ```
 
 Merge a supported PC mod package into an `initial.pak` candidate:
@@ -69,13 +68,13 @@ Merge a supported PC mod package into an `initial.pak` candidate:
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache \
 swift run snowrunner-tool pak merge-mod \
   --allow-overwrite \
-  --report validation/output/loadstar-merge-report.md \
-  --input-initial validation/input/initial.pak \
-  --output-initial validation/output/initial.loadstar-jbe.pak \
-  --input-textures validation/input/shared_textures_base.pak \
-  --output-textures validation/output/shared_textures_base.pak \
-  --input-shared-textures validation/input/shared_textures.pak \
-  --output-shared-textures validation/output/shared_textures.pak \
+  --report /tmp/loadstar-merge-report.md \
+  --input-initial /path/to/initial.pak \
+  --output-initial /tmp/initial.loadstar-jbe.pak \
+  --input-textures /path/to/shared_textures_base.pak \
+  --output-textures /tmp/shared_textures_base.pak \
+  --input-shared-textures /path/to/shared_textures.pak \
+  --output-shared-textures /tmp/shared_textures.pak \
   --mods fixtures/loadstar_1700_jbe.pak fixtures/loadstar_1700_jbe_pc.pak
 ```
 
@@ -100,64 +99,11 @@ texture PAK by content:
 PCT texture entries are indexed in `pak.load_list` as
 `pct_mr2_header` + `pct_faces` records for the generated `.pct_header`.
 
-## Runtime Validation
-
-`validation/` is the local workspace for game-runtime validation. It is ignored
-by git because it contains large game files and generated output.
-
-Expected input layout:
-
-```text
-validation/input/initial.pak
-validation/input/shared.pak
-validation/input/shared_sound.pak
-```
-
-Generate a rebuilt runtime candidate:
-
-```bash
-scripts/phase4-runtime-validation.sh
-```
-
-Generate a Loadstar JBE mod-merge candidate:
-
-```bash
-scripts/mod-merge-loadstar-validation.sh
-```
-
-The script writes:
-
-```text
-validation/output/initial.pak
-validation/output/created.load_list
-validation/output/inspect.txt
-validation/output/initial.loadstar-jbe.pak
-validation/output/loadstar-merge-report.md
-```
-
-`validation/output/initial.pak` is the candidate to copy into the game for
-manual launch validation. Back up the game's original `initial.pak` before
-replacing it.
-
-The runtime validation script intentionally does not use `--mixed-cache-block`.
-It isolates load-list validation by preserving the original loose `[strings]`
-entries in the outer PAK while rebuilding only `pak.load_list`.
-
 ## Fixtures
 
 `fixtures/` is for automated-test fixtures that belong in the repository.
-`validation/` is for local runtime PAKs and generated candidates.
 
 Large runtime PAKs such as `shared.pak` and `shared_sound.pak` should not be
 committed. Current runtime versions may be supersets of the historical PAKs that
 created `fixtures/initial.pak`'s embedded `pak.load_list`; tests therefore use
 containment checks instead of exact record-count parity for those inputs.
-
-## Phase 4 Status
-
-Phase 4 load-list rebuilding is complete.
-
-- Full test suite passed: `85 tests, 0 failures`.
-- Runtime validation produced `validation/output/initial.pak`.
-- `verify-basic` and `verify-snowpak-layout` passed for the rebuilt output.
-- Manual game launch succeeded with the rebuilt output PAK.

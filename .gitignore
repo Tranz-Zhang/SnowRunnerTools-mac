@@ -1,8 +1,7 @@
-SnowRunnerTools-win/
 **/.DS_Store
 .build/
 .vscode
 fixtures/shared_sound.pak
 fixtures/shared.pak
-validation/
 fixtures/output
+build/**/*.pak
