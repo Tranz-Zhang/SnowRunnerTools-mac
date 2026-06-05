@@ -141,6 +141,191 @@ final class ModMergerTests: XCTestCase {
         }
     }
 
+    func testExperimentalModTexturePakWritesAllTextureEntriesAndRedirectsLoadList() throws {
+        let base = try makeSyntheticInitialPak(records: [
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                loaderType: "pct_mr2_header",
+                sourcePak: "shared_textures.pak",
+                phase: "TEXTURE load"
+            ),
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                loaderType: "pct_faces",
+                sourcePak: "shared_textures.pak",
+                phase: "TEXTURE load"
+            )
+        ])
+        let mod = try makePak(named: "main-mod.pak", entries: [
+            "ui/textures/icon.png": Data([4, 5, 6])
+        ])
+        let pc = try makePak(named: "renamed_pc_archive.pak", entries: [
+            "prebuild/textures/pct/existing_texture.pct": makeSyntheticPCT(tableCount: 11),
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 12)
+        ])
+        let output = try temporaryDirectory(named: "merge-output")
+            .appendingPathComponent("initial.merged.pak")
+        let outputModTextures = try temporaryDirectory(named: "merge-mod-textures-output")
+            .appendingPathComponent("mod_textures.pak")
+
+        let result = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: [mod, pc],
+            options: ModMergeOptions(
+                allowOverwrite: true,
+                experimentalModTexturesOutputURL: outputModTextures
+            )
+        )
+
+        XCTAssertNil(result.outputTexturesURL)
+        XCTAssertEqual(result.outputSharedTexturesURL, outputModTextures)
+        XCTAssertEqual(result.plan.netNewTexturePakEntryCount, 1)
+        XCTAssertEqual(result.plan.netNewSharedTexturePakEntryCount, 4)
+        XCTAssertEqual(result.plan.textureLoadListRecordCount, 4)
+        XCTAssertEqual(
+            result.plan.loadListSourceOverrides,
+            [
+                ModLoadListSourceOverride(
+                    manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                    previousSourcePak: "shared_textures.pak",
+                    newSourcePak: "mod_textures.pak"
+                ),
+                ModLoadListSourceOverride(
+                    manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                    previousSourcePak: "shared_textures.pak",
+                    newSourcePak: "mod_textures.pak"
+                )
+            ]
+        )
+
+        let modTextureArchive = try PakReader.readArchive(at: outputModTextures)
+        XCTAssertTrue(modTextureArchive.entries.contains { $0.name == "[textures]\\icon.png" })
+        XCTAssertTrue(modTextureArchive.entries.contains { $0.name == "[textures]\\pct\\existing_texture.pct" })
+        XCTAssertTrue(modTextureArchive.entries.contains { $0.name == "[textures]\\pct\\existing_texture.pct_header" })
+        XCTAssertTrue(modTextureArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct" })
+        XCTAssertTrue(modTextureArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct_header" })
+        try PakReader.validatePayloadCRCs(in: modTextureArchive)
+
+        let archive = try PakReader.readArchive(at: output)
+        let manifestEntry = try XCTUnwrap(archive.entries.first { $0.name == LoadListConstants.manifestEntryName })
+        let manifestData = try PakReader.readUncompressedPayload(entry: manifestEntry, in: archive)
+        let manifest = try LoadListReader.readManifest(data: manifestData)
+        let textureRecords = manifest.recordsByPhase["TEXTURE load"] ?? []
+        XCTAssertEqual(
+            textureRecords.filter {
+                $0.manifestPath == "<textures>\\pct\\existing_texture.pct_header"
+                    && $0.sourcePak == "mod_textures.pak"
+            }.count,
+            2
+        )
+        XCTAssertFalse(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\existing_texture.pct_header"
+                && $0.sourcePak == "shared_textures.pak"
+        })
+        XCTAssertTrue(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\new_texture.pct_header"
+                && $0.loaderType == "pct_mr2_header"
+                && $0.sourcePak == "mod_textures.pak"
+        })
+        XCTAssertTrue(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\new_texture.pct_header"
+                && $0.loaderType == "pct_faces"
+                && $0.sourcePak == "mod_textures.pak"
+        })
+    }
+
+    func testExperimentalInlineTexturesWritesTextureEntriesIntoInitialPak() throws {
+        let base = try makeSyntheticInitialPak(records: [
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                loaderType: "pct_mr2_header",
+                sourcePak: "shared_textures.pak",
+                phase: "TEXTURE load"
+            ),
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                loaderType: "pct_faces",
+                sourcePak: "shared_textures.pak",
+                phase: "TEXTURE load"
+            )
+        ])
+        let mod = try makePak(named: "main-mod.pak", entries: [
+            "ui/textures/icon.png": Data([4, 5, 6])
+        ])
+        let pc = try makePak(named: "renamed_pc_archive.pak", entries: [
+            "prebuild/textures/pct/existing_texture.pct": makeSyntheticPCT(tableCount: 11),
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 12)
+        ])
+        let output = try temporaryDirectory(named: "merge-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: [mod, pc],
+            options: ModMergeOptions(
+                allowOverwrite: true,
+                experimentalInlineTextures: true
+            )
+        )
+
+        XCTAssertNil(result.outputTexturesURL)
+        XCTAssertNil(result.outputSharedTexturesURL)
+        XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 5)
+        XCTAssertEqual(result.plan.textureLoadListRecordCount, 4)
+        XCTAssertEqual(
+            result.plan.loadListSourceOverrides,
+            [
+                ModLoadListSourceOverride(
+                    manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                    previousSourcePak: "shared_textures.pak",
+                    newSourcePak: "initial.pak"
+                ),
+                ModLoadListSourceOverride(
+                    manifestPath: "<textures>\\pct\\existing_texture.pct_header",
+                    previousSourcePak: "shared_textures.pak",
+                    newSourcePak: "initial.pak"
+                )
+            ]
+        )
+
+        let archive = try PakReader.readArchive(at: output)
+        XCTAssertTrue(try PakVerifier.verifyBasic(archive).isEmpty)
+        XCTAssertTrue(try PakVerifier.verifySnowPakLayout(archive).isEmpty)
+        XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\icon.png" })
+        XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\pct\\existing_texture.pct" })
+        XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\pct\\existing_texture.pct_header" })
+        XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct" })
+        XCTAssertTrue(archive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct_header" })
+
+        let manifestEntry = try XCTUnwrap(archive.entries.first { $0.name == LoadListConstants.manifestEntryName })
+        let manifestData = try PakReader.readUncompressedPayload(entry: manifestEntry, in: archive)
+        let manifest = try LoadListReader.readManifest(data: manifestData)
+        let textureRecords = manifest.recordsByPhase["TEXTURE load"] ?? []
+        XCTAssertEqual(
+            textureRecords.filter {
+                $0.manifestPath == "<textures>\\pct\\existing_texture.pct_header"
+                    && $0.sourcePak == "initial.pak"
+            }.count,
+            2
+        )
+        XCTAssertFalse(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\existing_texture.pct_header"
+                && $0.sourcePak == "shared_textures.pak"
+        })
+        XCTAssertTrue(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\new_texture.pct_header"
+                && $0.loaderType == "pct_mr2_header"
+                && $0.sourcePak == "initial.pak"
+        })
+        XCTAssertTrue(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\new_texture.pct_header"
+                && $0.loaderType == "pct_faces"
+                && $0.sourcePak == "initial.pak"
+        })
+    }
+
     func testMergerMergesStringCollisionWithoutAllowOverwrite() throws {
         let base = try makeSyntheticInitialPak()
         let mod = try makePak(named: "text-mod.pak", entries: [
@@ -293,7 +478,8 @@ final class ModMergerTests: XCTestCase {
                     phase: "TEXTURE load"
                 )
             ],
-            netNewLoadListRecordCount: 3
+            netNewLoadListRecordCount: 3,
+            texturesInInitial: false
         )
         let report = ModMergeReporter.stdout(result: ModMergeResult(
             plan: plan,

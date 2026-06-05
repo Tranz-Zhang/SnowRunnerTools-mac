@@ -16,7 +16,8 @@ public struct ModLoadListSourceOverride: Equatable {
 public enum ModLoadListOverlay {
     public static func overlay(
         baseManifest: LoadListManifest,
-        mappedEntries: [ModMappedEntry]
+        mappedEntries: [ModMappedEntry],
+        textureSourcePakOverride: String? = nil
     ) throws -> ModLoadListOverlayResult {
         var finalRecords = flattenRecords(baseManifest)
         var modRecords: [LoadListRecord] = []
@@ -24,12 +25,33 @@ public enum ModLoadListOverlay {
         var sourceOverrides: [ModLoadListSourceOverride] = []
 
         for entry in mappedEntries {
-            let records = try LoadListClassifier.classifyMergedModEntry(entry.internalName)
+            let textureSourcePak = textureSourcePakOverride ?? "shared_textures.pak"
+            let records = try LoadListClassifier.classifyMergedModEntry(
+                entry.internalName,
+                textureSourcePak: textureSourcePak
+            )
             for record in records {
                 modRecords.append(record)
 
                 if let exactIndex = finalRecords.firstIndex(where: { recordIdentity($0) == recordIdentity(record) }) {
                     finalRecords[exactIndex] = record
+                    continue
+                }
+
+                if textureSourcePakOverride != nil,
+                   isPCTTextureRecord(record),
+                   let textureIndex = finalRecords.firstIndex(where: {
+                       $0.manifestPath == record.manifestPath && $0.loaderType == record.loaderType
+                   }) {
+                    let existing = finalRecords[textureIndex]
+                    if existing.sourcePak != record.sourcePak {
+                        sourceOverrides.append(ModLoadListSourceOverride(
+                            manifestPath: record.manifestPath,
+                            previousSourcePak: existing.sourcePak,
+                            newSourcePak: record.sourcePak
+                        ))
+                    }
+                    finalRecords[textureIndex] = record
                     continue
                 }
 
@@ -62,6 +84,12 @@ public enum ModLoadListOverlay {
 
     private static func shouldReplaceByManifestPath(_ record: LoadListRecord) -> Bool {
         !(record.manifestPath.hasPrefix("<textures>\\pct\\") && record.manifestPath.hasSuffix(".pct_header"))
+    }
+
+    private static func isPCTTextureRecord(_ record: LoadListRecord) -> Bool {
+        record.manifestPath.hasPrefix("<textures>\\pct\\")
+            && record.manifestPath.hasSuffix(".pct_header")
+            && (record.loaderType == "pct_mr2_header" || record.loaderType == "pct_faces")
     }
 
     private static func recordIdentity(_ record: LoadListRecord) -> String {

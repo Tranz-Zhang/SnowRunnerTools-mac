@@ -71,10 +71,7 @@ swift run snowrunner-tool pak merge-mod \
   --report /tmp/loadstar-merge-report.md \
   --input-initial /path/to/initial.pak \
   --output-initial /tmp/initial.loadstar-jbe.pak \
-  --input-textures /path/to/shared_textures_base.pak \
-  --output-textures /tmp/shared_textures_base.pak \
-  --input-shared-textures /path/to/shared_textures.pak \
-  --output-shared-textures /tmp/shared_textures.pak \
+  --experimental-inline-textures \
   --mods fixtures/loadstar_1700_jbe.pak fixtures/loadstar_1700_jbe_pc.pak
 ```
 
@@ -83,17 +80,32 @@ without writing outputs. The command refuses in-place writes; back up the
 game's original PAKs before manually copying verified candidates into the game
 directory.
 
+The normal build path now writes mod textures into the generated `initial.pak`.
+Runtime validation showed this works, and it keeps installation to one generated
+PAK while leaving the game's original `shared_textures.pak` and
+`shared_textures_base.pak` untouched.
+
+The separate texture PAK experiment also remains available for comparison:
+
+```bash
+--experimental-output-mod-textures /tmp/mod_textures.pak
+```
+
+Use that mode only when testing texture bytes outside `initial.pak`; it writes a
+second generated PAK and rewrites mod-managed PCT load-list records to source
+textures from that PAK.
+
 First-version mod merge support is intentionally narrow:
 
 ```text
 <mod>.pak: classes/...           -> [media]\classes\...
 <mod>.pak: prebuild/meshes/...   -> [meshes]\...
-<mod>.pak: ui/textures/...       -> shared_textures_base.pak:[textures]\...
+<mod>.pak: ui/textures/...       -> initial.pak:[textures]\...
 <mod>.pak: texts/*.str           -> [strings]\*.str
 texture PAK by content:
   prebuild/textures/pct/foo.pct
-    -> shared_textures.pak:[textures]\pct\foo.pct
-    -> shared_textures.pak:[textures]\pct\foo.pct_header
+    -> initial.pak:[textures]\pct\foo.pct
+    -> initial.pak:[textures]\pct\foo.pct_header
 ```
 
 PCT texture entries are indexed in `pak.load_list` as

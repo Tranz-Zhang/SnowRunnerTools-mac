@@ -16,12 +16,12 @@ public struct ModMergePlan: Equatable {
     public let loadListSourceOverrides: [ModLoadListSourceOverride]
     public let loadListCandidateRecords: [LoadListRecord]
     public let netNewLoadListRecordCount: Int
+    public let texturesInInitial: Bool
 
     public var textureLoadListRecordCount: Int {
         loadListCandidateRecords.filter {
             $0.manifestPath.hasPrefix("<textures>\\")
                 && ($0.loaderType == "pct_mr2_header" || $0.loaderType == "pct_faces")
-                && $0.sourcePak == "shared_textures.pak"
         }.count
     }
 }
@@ -40,10 +40,20 @@ public struct ModMergeOptions: Equatable {
     public let allowOverwrite: Bool
     public let dryRun: Bool
     public let reportURL: URL?
+    public let experimentalModTexturesOutputURL: URL?
+    public let experimentalInlineTextures: Bool
 
-    public init(allowOverwrite: Bool, dryRun: Bool = false, reportURL: URL? = nil) {
+    public init(
+        allowOverwrite: Bool,
+        dryRun: Bool = false,
+        reportURL: URL? = nil,
+        experimentalModTexturesOutputURL: URL? = nil,
+        experimentalInlineTextures: Bool = false
+    ) {
         self.allowOverwrite = allowOverwrite
         self.dryRun = dryRun
         self.reportURL = reportURL
+        self.experimentalModTexturesOutputURL = experimentalModTexturesOutputURL
+        self.experimentalInlineTextures = experimentalInlineTextures
     }
 }

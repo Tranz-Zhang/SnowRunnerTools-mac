@@ -91,6 +91,83 @@ final class ModMergeCLITests: XCTestCase {
         XCTAssertTrue(result.stderr.contains("PCT texture merge requires --input-shared-textures and --output-shared-textures"))
     }
 
+    func testCLIMergeModWritesExperimentalModTextureOutputWithoutSharedTextureInputs() throws {
+        let base = try makeSyntheticInitialPak()
+        let mod = try makePak(named: "main-mod.pak", entries: [
+            "ui/textures/icon.png": Data([4, 5, 6])
+        ])
+        let pc = try makePak(named: "renamed_texture_archive.pak", entries: [
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 10)
+        ])
+        let output = try temporaryDirectory(named: "cli-merge-output")
+            .appendingPathComponent("initial.merged.pak")
+        let outputModTextures = try temporaryDirectory(named: "cli-merge-mod-textures-output")
+            .appendingPathComponent("mod_textures.pak")
+
+        let result = CLI.run(arguments: [
+            "pak", "merge-mod",
+            "--input-initial", base.path,
+            "--output-initial", output.path,
+            "--experimental-output-mod-textures", outputModTextures.path,
+            "--mods", mod.path, pc.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.stderr)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outputModTextures.path))
+        XCTAssertTrue(result.stdout.contains("written initial: \(output.path)"))
+        XCTAssertTrue(result.stdout.contains("written shared textures: \(outputModTextures.path)"))
+        XCTAssertFalse(result.stdout.contains("dry-run textures: no output written"))
+    }
+
+    func testCLIMergeModWritesExperimentalInlineTexturesWithoutTextureOutputs() throws {
+        let base = try makeSyntheticInitialPak()
+        let mod = try makePak(named: "main-mod.pak", entries: [
+            "ui/textures/icon.png": Data([4, 5, 6])
+        ])
+        let pc = try makePak(named: "renamed_texture_archive.pak", entries: [
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 10)
+        ])
+        let output = try temporaryDirectory(named: "cli-merge-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = CLI.run(arguments: [
+            "pak", "merge-mod",
+            "--input-initial", base.path,
+            "--output-initial", output.path,
+            "--experimental-inline-textures",
+            "--mods", mod.path, pc.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.stderr)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
+        XCTAssertTrue(result.stdout.contains("written initial: \(output.path)"))
+        XCTAssertFalse(result.stdout.contains("written textures:"))
+        XCTAssertFalse(result.stdout.contains("written shared textures:"))
+        XCTAssertFalse(result.stdout.contains("dry-run textures: no output written"))
+        XCTAssertFalse(result.stdout.contains("dry-run shared textures: no output written"))
+    }
+
+    func testCLIMergeModRejectsExperimentalTextureOutputMatchingInput() throws {
+        let base = try makeSyntheticInitialPak()
+        let pc = try makePak(named: "renamed_texture_archive.pak", entries: [
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 10)
+        ])
+        let output = try temporaryDirectory(named: "cli-merge-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = CLI.run(arguments: [
+            "pak", "merge-mod",
+            "--input-initial", base.path,
+            "--output-initial", output.path,
+            "--experimental-output-mod-textures", pc.path,
+            "--mods", pc.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertTrue(result.stderr.contains("Output path must be distinct from every input PAK"))
+    }
+
     func testCLIMergeModRejectsOldPositionalSyntax() throws {
         let base = try makeSyntheticInitialPak()
         let mod = try makePak(named: "main-mod.pak", entries: [
@@ -112,6 +189,10 @@ final class ModMergeCLITests: XCTestCase {
 }
 
 func makeSyntheticInitialPak() throws -> URL {
+    try makeSyntheticInitialPak(records: [])
+}
+
+func makeSyntheticInitialPak(records extraRecords: [LoadListRecord]) throws -> URL {
     let manifest = try LoadListBuilder.buildManifest(records: [
         LoadListRecord(
             manifestPath: "<media>\\classes\\trucks\\existing.xml",
@@ -119,7 +200,7 @@ func makeSyntheticInitialPak() throws -> URL {
             sourcePak: "initial.pak",
             phase: "CLASSES load"
         )
-    ])
+    ] + extraRecords)
     let manifestData = try LoadListWriter.encodeManifest(manifest)
     let output = try temporaryDirectory(named: "synthetic-initial")
         .appendingPathComponent("initial.pak")

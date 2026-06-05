@@ -10,12 +10,8 @@ OUTPUT_DIR="$SCRIPT_DIR/output"
 REPORTS_DIR="$SCRIPT_DIR/reports"
 
 INPUT_INITIAL="$INPUT_DIR/initial.pak"
-INPUT_SHARED_TEXTURES="$INPUT_DIR/shared_textures.pak"
-INPUT_SHARED_TEXTURES_BASE="$INPUT_DIR/shared_textures_base.pak"
 
 OUTPUT_INITIAL="$OUTPUT_DIR/initial.pak"
-OUTPUT_SHARED_TEXTURES="$OUTPUT_DIR/shared_textures.pak"
-OUTPUT_SHARED_TEXTURES_BASE="$OUTPUT_DIR/shared_textures_base.pak"
 REPORT="$REPORTS_DIR/mod-merge-report.md"
 
 die() {
@@ -41,25 +37,8 @@ merge_args=(
   "--report" "$REPORT"
   "--input-initial" "$INPUT_INITIAL"
   "--output-initial" "$OUTPUT_INITIAL"
+  "--experimental-inline-textures"
 )
-
-if [[ -f "$INPUT_SHARED_TEXTURES_BASE" ]]; then
-  merge_args+=(
-    "--input-textures" "$INPUT_SHARED_TEXTURES_BASE"
-    "--output-textures" "$OUTPUT_SHARED_TEXTURES_BASE"
-  )
-elif [[ -f "$OUTPUT_SHARED_TEXTURES_BASE" ]]; then
-  printf 'warning: not updating existing output because input is missing: %s\n' "$OUTPUT_SHARED_TEXTURES_BASE" >&2
-fi
-
-if [[ -f "$INPUT_SHARED_TEXTURES" ]]; then
-  merge_args+=(
-    "--input-shared-textures" "$INPUT_SHARED_TEXTURES"
-    "--output-shared-textures" "$OUTPUT_SHARED_TEXTURES"
-  )
-elif [[ -f "$OUTPUT_SHARED_TEXTURES" ]]; then
-  printf 'warning: not updating existing output because input is missing: %s\n' "$OUTPUT_SHARED_TEXTURES" >&2
-fi
 
 merge_args+=("--mods")
 merge_args+=("${mods[@]}")
@@ -79,14 +58,6 @@ Mod merge complete.
 Outputs:
   $OUTPUT_INITIAL
 EOF
-
-if [[ -f "$INPUT_SHARED_TEXTURES_BASE" ]]; then
-  printf '  %s\n' "$OUTPUT_SHARED_TEXTURES_BASE"
-fi
-
-if [[ -f "$INPUT_SHARED_TEXTURES" ]]; then
-  printf '  %s\n' "$OUTPUT_SHARED_TEXTURES"
-fi
 
 cat <<EOF
 

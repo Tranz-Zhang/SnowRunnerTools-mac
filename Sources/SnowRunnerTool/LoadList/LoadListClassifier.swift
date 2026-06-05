@@ -118,7 +118,10 @@ public enum LoadListClassifier {
         try classifyMergedModEntry(internalName).first
     }
 
-    public static func classifyMergedModEntry(_ internalName: String) throws -> [LoadListRecord] {
+    public static func classifyMergedModEntry(
+        _ internalName: String,
+        textureSourcePak: String = "shared_textures.pak"
+    ) throws -> [LoadListRecord] {
         if internalName.hasPrefix("[ui]\\") || internalName.hasPrefix("[strings]\\") {
             return []
         }
@@ -130,14 +133,14 @@ public enum LoadListClassifier {
                 LoadListRecord(
                     manifestPath: manifestPath,
                     loaderType: "pct_mr2_header",
-                    sourcePak: "shared_textures.pak",
+                    sourcePak: textureSourcePak,
                     json: nil,
                     phase: "TEXTURE load"
                 ),
                 LoadListRecord(
                     manifestPath: manifestPath,
                     loaderType: "pct_faces",
-                    sourcePak: "shared_textures.pak",
+                    sourcePak: textureSourcePak,
                     json: nil,
                     phase: "TEXTURE load"
                 )

@@ -23,12 +23,19 @@ public enum ModMergeReporter {
         }
         if let outputTexturesURL = result.outputTexturesURL {
             lines.append("written textures: \(outputTexturesURL.path)")
-        } else if result.plan.textureBaseEntryCount > 0 || result.plan.netNewTexturePakEntryCount > 0 || !result.plan.textureCollisions.isEmpty {
+        } else if result.outputSharedTexturesURL == nil
+            && !result.plan.texturesInInitial
+            && (result.plan.textureBaseEntryCount > 0
+                || result.plan.netNewTexturePakEntryCount > 0
+                || !result.plan.textureCollisions.isEmpty) {
             lines.append("dry-run textures: no output written")
         }
         if let outputSharedTexturesURL = result.outputSharedTexturesURL {
             lines.append("written shared textures: \(outputSharedTexturesURL.path)")
-        } else if result.plan.sharedTextureEntryCount > 0 || result.plan.netNewSharedTexturePakEntryCount > 0 || !result.plan.sharedTextureCollisions.isEmpty {
+        } else if !result.plan.texturesInInitial
+            && (result.plan.sharedTextureEntryCount > 0
+                || result.plan.netNewSharedTexturePakEntryCount > 0
+                || !result.plan.sharedTextureCollisions.isEmpty) {
             lines.append("dry-run shared textures: no output written")
         }
         return lines.joined(separator: "\n") + "\n"
@@ -60,12 +67,19 @@ public enum ModMergeReporter {
         }
         if let outputTexturesURL = result.outputTexturesURL {
             lines.append("- texture output: \(outputTexturesURL.path)")
-        } else if plan.textureBaseEntryCount > 0 || plan.netNewTexturePakEntryCount > 0 || !plan.textureCollisions.isEmpty {
+        } else if result.outputSharedTexturesURL == nil
+            && !plan.texturesInInitial
+            && (plan.textureBaseEntryCount > 0
+                || plan.netNewTexturePakEntryCount > 0
+                || !plan.textureCollisions.isEmpty) {
             lines.append("- texture output: dry-run")
         }
         if let outputSharedTexturesURL = result.outputSharedTexturesURL {
             lines.append("- shared texture output: \(outputSharedTexturesURL.path)")
-        } else if plan.sharedTextureEntryCount > 0 || plan.netNewSharedTexturePakEntryCount > 0 || !plan.sharedTextureCollisions.isEmpty {
+        } else if !plan.texturesInInitial
+            && (plan.sharedTextureEntryCount > 0
+                || plan.netNewSharedTexturePakEntryCount > 0
+                || !plan.sharedTextureCollisions.isEmpty) {
             lines.append("- shared texture output: dry-run")
         }
 

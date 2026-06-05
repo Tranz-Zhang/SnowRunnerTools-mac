@@ -43,6 +43,8 @@ public enum CLI {
           pak pack --mixed-cache-block <dir> <pak>
           pak pack --rebuild-load-list [--mixed-cache-block] <dir> <pak> <shared.pak> <shared_sound.pak>
           pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate-base-textures.pak>] [--input-shared-textures <shared_textures.pak> --output-shared-textures <candidate-shared_textures.pak>] --mods <mod.pak> [<mod.pak> ...]
+          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> --experimental-output-mod-textures <mod_textures.pak> --mods <mod.pak> [<mod.pak> ...]
+          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> --experimental-inline-textures --mods <mod.pak> [<mod.pak> ...]
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -260,6 +262,8 @@ public enum CLI {
         var outputTexturesPath: String?
         var inputSharedTexturesPath: String?
         var outputSharedTexturesPath: String?
+        var experimentalModTexturesOutputPath: String?
+        var experimentalInlineTextures = false
         var modPaths: [String] = []
         var index = 0
 
@@ -320,6 +324,18 @@ public enum CLI {
                 }
                 outputSharedTexturesPath = arguments[index + 1]
                 index += 2
+            case "--experimental-output-mod-textures":
+                guard experimentalModTexturesOutputPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                experimentalModTexturesOutputPath = arguments[index + 1]
+                index += 2
+            case "--experimental-inline-textures":
+                guard !experimentalInlineTextures else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                experimentalInlineTextures = true
+                index += 1
             case "--mods":
                 let remaining = Array(arguments[(index + 1)...])
                 guard !remaining.isEmpty, remaining.allSatisfy({ !$0.hasPrefix("--") }) else {
@@ -337,6 +353,9 @@ public enum CLI {
               !modPaths.isEmpty else {
             return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
         }
+        guard !(experimentalInlineTextures && experimentalModTexturesOutputPath != nil) else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+        }
 
         let base = URL(fileURLWithPath: inputInitialPath)
         let output = URL(fileURLWithPath: outputInitialPath)
@@ -344,11 +363,14 @@ public enum CLI {
         let outputTextures = outputTexturesPath.map { URL(fileURLWithPath: $0) }
         let inputSharedTextures = inputSharedTexturesPath.map { URL(fileURLWithPath: $0) }
         let outputSharedTextures = outputSharedTexturesPath.map { URL(fileURLWithPath: $0) }
+        let experimentalModTexturesOutput = experimentalModTexturesOutputPath.map { URL(fileURLWithPath: $0) }
         let mods = modPaths.map { URL(fileURLWithPath: $0) }
         let options = ModMergeOptions(
             allowOverwrite: allowOverwrite,
             dryRun: dryRun,
-            reportURL: reportPath.map { URL(fileURLWithPath: $0) }
+            reportURL: reportPath.map { URL(fileURLWithPath: $0) },
+            experimentalModTexturesOutputURL: experimentalModTexturesOutput,
+            experimentalInlineTextures: experimentalInlineTextures
         )
         let result = try ModMerger.merge(
             baseInitialPak: base,
@@ -364,7 +386,7 @@ public enum CLI {
     }
 
     private static func pakMergeModUsage() -> String {
-        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate-base-textures.pak>] [--input-shared-textures <shared_textures.pak> --output-shared-textures <candidate-shared_textures.pak>] --mods <mod.pak> [<mod.pak> ...]\n"
+        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate-base-textures.pak>] [--input-shared-textures <shared_textures.pak> --output-shared-textures <candidate-shared_textures.pak>] [--experimental-output-mod-textures <mod_textures.pak> | --experimental-inline-textures] --mods <mod.pak> [<mod.pak> ...]\n"
     }
 
     private static func inspectOutput(for archive: PakArchive) -> String {

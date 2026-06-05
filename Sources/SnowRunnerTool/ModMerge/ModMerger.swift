@@ -11,8 +11,11 @@ public enum ModMerger {
         modPaks: [URL],
         options: ModMergeOptions
     ) throws -> ModMergeResult {
+        let experimentalModTexturesOutputURL = options.experimentalModTexturesOutputURL
+        let experimentalInlineTextures = options.experimentalInlineTextures
         try validateOutputPaths(
-            [outputInitialPak, outputSharedTexturesPak, outputHighSharedTexturesPak].compactMap { $0 },
+            [outputInitialPak, outputSharedTexturesPak, outputHighSharedTexturesPak, experimentalModTexturesOutputURL]
+                .compactMap { $0 },
             inputs: [baseInitialPak, baseSharedTexturesPak, baseHighSharedTexturesPak].compactMap { $0 } + modPaks
         )
 
@@ -31,8 +34,11 @@ public enum ModMerger {
         let stringMergeEntries = partitionedEntries.stringMergeEntries
         let textureEntries = mappedEntries.filter { $0.targetArchive == .sharedTexturesBase }
         let sharedTextureEntries = mappedEntries.filter { $0.targetArchive == .sharedTextures }
+        let experimentalTextureEntries = try combinedExperimentalTextureEntries(
+            textureEntries + sharedTextureEntries
+        )
         let textureArchive: PakArchive?
-        if textureEntries.isEmpty {
+        if textureEntries.isEmpty || experimentalModTexturesOutputURL != nil || experimentalInlineTextures {
             textureArchive = nil
         } else {
             guard let baseSharedTexturesPak, outputSharedTexturesPak != nil else {
@@ -41,7 +47,7 @@ public enum ModMerger {
             textureArchive = try PakReader.readArchive(at: baseSharedTexturesPak)
         }
         let sharedTextureIndex: LargePakIndex?
-        if sharedTextureEntries.isEmpty {
+        if sharedTextureEntries.isEmpty || experimentalModTexturesOutputURL != nil || experimentalInlineTextures {
             sharedTextureIndex = nil
         } else {
             guard let baseHighSharedTexturesPak, outputHighSharedTexturesPak != nil else {
@@ -51,7 +57,12 @@ public enum ModMerger {
         }
 
         let baseNames = Set(baseArchive.entries.map(\.name))
+        let inlineTextureEntries = experimentalInlineTextures ? experimentalTextureEntries : []
         let collisions = initialEntries
+            .map(\.internalName)
+            .filter { baseNames.contains($0) }
+            .sorted()
+        let inlineTextureCollisions = inlineTextureEntries
             .map(\.internalName)
             .filter { baseNames.contains($0) }
             .sorted()
@@ -65,17 +76,28 @@ public enum ModMerger {
             .map(\.internalName)
             .filter { sharedTextureBaseNames.contains($0) }
             .sorted()
-        let blockedCollisions = collisions + textureCollisions + sharedTextureCollisions
+        let blockedCollisions = collisions + inlineTextureCollisions + textureCollisions + sharedTextureCollisions
         if !blockedCollisions.isEmpty && !options.allowOverwrite {
             throw ModMergeError.overwriteRequired(paths: blockedCollisions)
         }
 
-        let overlay = try ModLoadListOverlay.overlay(baseManifest: baseManifest, mappedEntries: mappedEntries)
+        let textureSourcePakOverride: String?
+        if experimentalInlineTextures {
+            textureSourcePakOverride = "initial.pak"
+        } else {
+            textureSourcePakOverride = experimentalModTexturesOutputURL?.lastPathComponent
+        }
+        let overlay = try ModLoadListOverlay.overlay(
+            baseManifest: baseManifest,
+            mappedEntries: mappedEntries,
+            textureSourcePakOverride: textureSourcePakOverride
+        )
         let loadListData = try LoadListWriter.encodeManifest(overlay.manifest)
         let plan = ModMergePlan(
             baseEntryCount: baseArchive.entries.count,
             mappedModEntryCount: rawMappedEntries.count,
             netNewOuterPakEntryCount: initialEntries.filter { !baseNames.contains($0.internalName) }.count
+                + inlineTextureEntries.filter { !baseNames.contains($0.internalName) }.count
                 + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
             collisions: collisions,
             textureBaseEntryCount: textureArchive?.entries.count ?? 0,
@@ -88,7 +110,8 @@ public enum ModMerger {
             duplicateIdenticalMappedNames: duplicateResolution.duplicateIdenticalNames,
             loadListSourceOverrides: overlay.sourceOverrides,
             loadListCandidateRecords: overlay.modManagedRecords,
-            netNewLoadListRecordCount: overlay.netNewRecordCount
+            netNewLoadListRecordCount: overlay.netNewRecordCount,
+            texturesInInitial: experimentalInlineTextures
         )
 
         if options.dryRun {
@@ -107,7 +130,7 @@ public enum ModMerger {
 
         let sources = try buildMergedSources(
             baseArchive: baseArchive,
-            mappedEntries: initialEntries,
+            mappedEntries: initialEntries + inlineTextureEntries,
             stringMergeEntries: stringMergeEntries,
             loadListData: loadListData,
             requirePakLoadList: true
@@ -124,7 +147,9 @@ public enum ModMerger {
         }
 
         let writtenTexture: Int?
-        if !textureEntries.isEmpty {
+        if experimentalModTexturesOutputURL != nil || experimentalInlineTextures {
+            writtenTexture = nil
+        } else if !textureEntries.isEmpty {
             guard let textureArchive, let outputSharedTexturesPak else {
                 throw ModMergeError.missingTextureOutput
             }
@@ -142,7 +167,22 @@ public enum ModMerger {
         }
 
         let writtenSharedTexture: Int?
-        if !sharedTextureEntries.isEmpty {
+        if experimentalInlineTextures {
+            writtenSharedTexture = nil
+        } else if let experimentalModTexturesOutputURL, !experimentalTextureEntries.isEmpty {
+            let textureSources = try PakDirectoryScanner.sortedPackSources(
+                experimentalTextureEntries.map {
+                    PakFileSource(internalName: $0.internalName, data: $0.data)
+                },
+                requirePakLoadList: false
+            )
+            writtenSharedTexture = try PakWriter.writeArchive(
+                fileSources: textureSources,
+                to: experimentalModTexturesOutputURL
+            )
+            let writtenTextureArchive = try PakReader.readArchive(at: experimentalModTexturesOutputURL)
+            try PakReader.validatePayloadCRCs(in: writtenTextureArchive)
+        } else if !sharedTextureEntries.isEmpty {
             guard let baseHighSharedTexturesPak, let outputHighSharedTexturesPak else {
                 throw ModMergeError.missingSharedTextureOutput
             }
@@ -163,8 +203,15 @@ public enum ModMerger {
         let result = ModMergeResult(
             plan: plan,
             outputURL: outputInitialPak,
-            outputTexturesURL: textureEntries.isEmpty ? nil : outputSharedTexturesPak,
-            outputSharedTexturesURL: sharedTextureEntries.isEmpty ? nil : outputHighSharedTexturesPak,
+            outputTexturesURL: experimentalModTexturesOutputURL == nil && !textureEntries.isEmpty
+                && !experimentalInlineTextures
+                ? outputSharedTexturesPak
+                : nil,
+            outputSharedTexturesURL: experimentalModTexturesOutputURL != nil
+                && !experimentalInlineTextures
+                && !experimentalTextureEntries.isEmpty
+                ? experimentalModTexturesOutputURL
+                : (experimentalInlineTextures ? nil : (sharedTextureEntries.isEmpty ? nil : outputHighSharedTexturesPak)),
             writtenEntryCount: written,
             writtenTextureEntryCount: writtenTexture,
             writtenSharedTextureEntryCount: writtenSharedTexture
@@ -259,6 +306,21 @@ public enum ModMerger {
             .compactMap { stringEntriesByName[$0] }
             .sorted { $0.internalName < $1.internalName }
         return (regularEntries, stringMergeEntries)
+    }
+
+    private static func combinedExperimentalTextureEntries(
+        _ entries: [ModMappedEntry]
+    ) throws -> [ModMappedEntry] {
+        let retargeted = entries.map {
+            ModMappedEntry(
+                archiveURL: $0.archiveURL,
+                originalName: $0.originalName,
+                internalName: $0.internalName,
+                targetArchive: .sharedTextures,
+                data: $0.data
+            )
+        }
+        return try resolveMappedDuplicates(retargeted).entries
     }
 
     private static func isStringMergeEntry(_ entry: ModMappedEntry) -> Bool {
