@@ -5,3 +5,5 @@ fixtures/shared_sound.pak
 fixtures/shared.pak
 fixtures/output
 build/**/*.pak
+build/output/
+build/reports/
