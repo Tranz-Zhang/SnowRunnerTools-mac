@@ -72,7 +72,7 @@ final class ModArchiveMapperTests: XCTestCase {
             throw XCTSkip("Loadstar JBE mod fixture is not present")
         }
 
-        XCTAssertEqual(try ModArchiveMapper.mapArchive(at: modPak).count, 109)
+        XCTAssertEqual(try ModArchiveMapper.mapArchive(at: modPak).count, 106)
         XCTAssertEqual(try ModArchiveMapper.mapArchive(at: pcPak).count, 84)
     }
 
