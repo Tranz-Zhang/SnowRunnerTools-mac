@@ -1,2 +1,1 @@
-fixtures/initial.repacked.pak filter=lfs diff=lfs merge=lfs -text
-fixtures/initial.pak filter=lfs diff=lfs merge=lfs -text
+*.pak filter=lfs diff=lfs merge=lfs -text
