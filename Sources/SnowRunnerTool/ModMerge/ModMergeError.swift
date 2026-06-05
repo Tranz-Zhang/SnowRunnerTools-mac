@@ -3,6 +3,7 @@ import Foundation
 public enum ModMergeError: Error, CustomStringConvertible, Equatable {
     case unsupportedModPath(archive: String, path: String)
     case invalidModArchive(archive: String, reason: String)
+    case invalidStringTable(path: String, reason: String)
     case overwriteRequired(paths: [String])
     case conflictingMappedDuplicate(path: String)
     case outputPathMatchesInput(String)
@@ -17,6 +18,8 @@ public enum ModMergeError: Error, CustomStringConvertible, Equatable {
             return "Unsupported mod path in \(archive): \(path)"
         case let .invalidModArchive(archive, reason):
             return "Invalid mod archive \(archive): \(reason)"
+        case let .invalidStringTable(path, reason):
+            return "Invalid string table \(path): \(reason)"
         case let .overwriteRequired(paths):
             let examples = paths.prefix(10).joined(separator: "\n")
             return "Mapped mod entries collide with existing base entries. Re-run with --allow-overwrite to replace them:\n\(examples)"

@@ -34,7 +34,10 @@ final class ModMergerTests: XCTestCase {
             "classes/trucks/existing.xml": Data("<Truck mod=\"true\"/>".utf8),
             "prebuild/meshes/new_mesh": Data([1, 2, 3]),
             "ui/textures/icon.png": Data([4, 5, 6]),
-            "texts/strings_english.str": Data("Merged strings".utf8)
+            "texts/strings_english.str": stringTableData("""
+            BASE_KEY\t\t"Mod"
+            MOD_KEY\t\t"Added"
+            """)
         ])
         let pc = try makePak(named: "pc.pak", entries: [
             "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 11)
@@ -59,10 +62,10 @@ final class ModMergerTests: XCTestCase {
 
         XCTAssertEqual(result.plan.mappedModEntryCount, 6)
         XCTAssertEqual(result.plan.collisions, [
-            "[media]\\classes\\trucks\\existing.xml",
-            "[strings]\\strings_english.str"
+            "[media]\\classes\\trucks\\existing.xml"
         ])
         XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 1)
+        XCTAssertEqual(result.plan.stringMergeEntryCount, 1)
         XCTAssertEqual(result.plan.textureCollisions, [])
         XCTAssertEqual(result.plan.netNewTexturePakEntryCount, 1)
         XCTAssertEqual(result.plan.netNewSharedTexturePakEntryCount, 2)
@@ -76,6 +79,13 @@ final class ModMergerTests: XCTestCase {
         XCTAssertTrue(archive.entries.contains { $0.name == "[meshes]\\new_mesh" })
         XCTAssertFalse(archive.entries.contains { $0.name.hasPrefix("[textures]\\") })
         XCTAssertTrue(archive.entries.contains { $0.name == "[strings]\\strings_english.str" })
+        let stringEntry = try XCTUnwrap(archive.entries.first { $0.name == "[strings]\\strings_english.str" })
+        let stringData = try PakReader.readUncompressedPayload(entry: stringEntry, in: archive)
+        XCTAssertEqual(decodedStringTable(stringData), """
+        KEEP_KEY\t\t"Keep"
+        BASE_KEY\t\t"Mod"
+        MOD_KEY\t\t"Added"
+        """)
 
         let textureArchive = try PakReader.readArchive(at: outputTextures)
         XCTAssertTrue(textureArchive.entries.contains { $0.name == "[textures]\\pct\\existing_texture.pct_base" })
@@ -129,6 +139,66 @@ final class ModMergerTests: XCTestCase {
                 return
             }
         }
+    }
+
+    func testMergerMergesStringCollisionWithoutAllowOverwrite() throws {
+        let base = try makeSyntheticInitialPak()
+        let mod = try makePak(named: "text-mod.pak", entries: [
+            "texts/strings_english.str": stringTableData("""
+            BASE_KEY\t\t"Mod"
+            NEW_KEY\t\t"New"
+            """)
+        ])
+        let output = try temporaryDirectory(named: "merge-string-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: [mod],
+            options: ModMergeOptions(allowOverwrite: false)
+        )
+
+        XCTAssertEqual(result.plan.collisions, [])
+        XCTAssertEqual(result.plan.stringMergeEntryCount, 1)
+        XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 0)
+
+        let archive = try PakReader.readArchive(at: output)
+        let stringEntry = try XCTUnwrap(archive.entries.first { $0.name == "[strings]\\strings_english.str" })
+        let stringData = try PakReader.readUncompressedPayload(entry: stringEntry, in: archive)
+        XCTAssertEqual(decodedStringTable(stringData), """
+        KEEP_KEY\t\t"Keep"
+        BASE_KEY\t\t"Mod"
+        NEW_KEY\t\t"New"
+        """)
+    }
+
+    func testMergerPreservesBaseKeysWhenMergingTextFixture() throws {
+        guard FileManager.default.fileExists(atPath: TestFixtures.initialPak.path),
+              let textPak = TestFixtures.optionalTextPak() else {
+            throw XCTSkip("initial.pak or text.pak fixture is not present")
+        }
+        let output = try temporaryDirectory(named: "merge-text-fixture-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = try ModMerger.merge(
+            baseInitialPak: TestFixtures.initialPak,
+            outputInitialPak: output,
+            modPaks: [textPak],
+            options: ModMergeOptions(allowOverwrite: false)
+        )
+
+        XCTAssertEqual(result.plan.collisions, [])
+        XCTAssertEqual(result.plan.stringMergeEntryCount, 13)
+        XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 0)
+
+        let archive = try PakReader.readArchive(at: output)
+        let stringEntry = try XCTUnwrap(archive.entries.first { $0.name == "[strings]\\strings_english.str" })
+        let stringData = try PakReader.readUncompressedPayload(entry: stringEntry, in: archive)
+        let stringText = decodedStringTable(stringData)
+        XCTAssertGreaterThan(stringData.count, 1_000_000)
+        XCTAssertTrue(stringText.contains("UI_COMMON_BRICK_CARCASS\t"))
+        XCTAssertTrue(stringText.contains("UI_TIRE_HIGHWAY_DOUBLE_1_NAME\t"))
     }
 
     func testMergerRequiresOverwriteForSharedTextureCollision() throws {
@@ -200,6 +270,7 @@ final class ModMergerTests: XCTestCase {
             sharedTextureEntryCount: 1,
             netNewSharedTexturePakEntryCount: 2,
             sharedTextureCollisions: [],
+            stringMergeEntryCount: 0,
             duplicateIdenticalMappedNames: [],
             loadListSourceOverrides: [],
             loadListCandidateRecords: [

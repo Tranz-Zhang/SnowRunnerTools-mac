@@ -128,7 +128,10 @@ func makeSyntheticInitialPak() throws -> URL {
         PakFileSource(internalName: "initial.cache_block", data: Data("cache".utf8)),
         PakFileSource(internalName: "[media]\\classes\\trucks\\existing.xml", data: Data("<Truck/>".utf8)),
         PakFileSource(internalName: "[ssl_cache]\\initial_pak", data: Data("ssl".utf8)),
-        PakFileSource(internalName: "[strings]\\strings_english.str", data: Data("strings".utf8))
+        PakFileSource(internalName: "[strings]\\strings_english.str", data: stringTableData("""
+        BASE_KEY\t\t"Base"
+        KEEP_KEY\t\t"Keep"
+        """))
     ])
     try PakWriter.writeArchive(fileSources: sources, to: output)
     return output
