@@ -42,7 +42,7 @@ public enum CLI {
           pak pack <dir> <pak>
           pak pack --mixed-cache-block <dir> <pak>
           pak pack --rebuild-load-list [--mixed-cache-block] <dir> <pak> <shared.pak> <shared_sound.pak>
-          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate.pak>] --mods <mod.pak> [<mod.pak> ...]
+          pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate-base-textures.pak>] [--input-shared-textures <shared_textures.pak> --output-shared-textures <candidate-shared_textures.pak>] --mods <mod.pak> [<mod.pak> ...]
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
@@ -258,6 +258,8 @@ public enum CLI {
         var outputInitialPath: String?
         var inputTexturesPath: String?
         var outputTexturesPath: String?
+        var inputSharedTexturesPath: String?
+        var outputSharedTexturesPath: String?
         var modPaths: [String] = []
         var index = 0
 
@@ -306,6 +308,18 @@ public enum CLI {
                 }
                 outputTexturesPath = arguments[index + 1]
                 index += 2
+            case "--input-shared-textures":
+                guard inputSharedTexturesPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                inputSharedTexturesPath = arguments[index + 1]
+                index += 2
+            case "--output-shared-textures":
+                guard outputSharedTexturesPath == nil, index + 1 < arguments.count else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: pakMergeModUsage())
+                }
+                outputSharedTexturesPath = arguments[index + 1]
+                index += 2
             case "--mods":
                 let remaining = Array(arguments[(index + 1)...])
                 guard !remaining.isEmpty, remaining.allSatisfy({ !$0.hasPrefix("--") }) else {
@@ -328,6 +342,8 @@ public enum CLI {
         let output = URL(fileURLWithPath: outputInitialPath)
         let inputTextures = inputTexturesPath.map { URL(fileURLWithPath: $0) }
         let outputTextures = outputTexturesPath.map { URL(fileURLWithPath: $0) }
+        let inputSharedTextures = inputSharedTexturesPath.map { URL(fileURLWithPath: $0) }
+        let outputSharedTextures = outputSharedTexturesPath.map { URL(fileURLWithPath: $0) }
         let mods = modPaths.map { URL(fileURLWithPath: $0) }
         let options = ModMergeOptions(
             allowOverwrite: allowOverwrite,
@@ -339,6 +355,8 @@ public enum CLI {
             outputInitialPak: output,
             baseSharedTexturesPak: inputTextures,
             outputSharedTexturesPak: outputTextures,
+            baseHighSharedTexturesPak: inputSharedTextures,
+            outputHighSharedTexturesPak: outputSharedTextures,
             modPaks: mods,
             options: options
         )
@@ -346,7 +364,7 @@ public enum CLI {
     }
 
     private static func pakMergeModUsage() -> String {
-        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate.pak>] --mods <mod.pak> [<mod.pak> ...]\n"
+        "Usage: snowrunner-tool pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate-base-textures.pak>] [--input-shared-textures <shared_textures.pak> --output-shared-textures <candidate-shared_textures.pak>] --mods <mod.pak> [<mod.pak> ...]\n"
     }
 
     private static func inspectOutput(for archive: PakArchive) -> String {

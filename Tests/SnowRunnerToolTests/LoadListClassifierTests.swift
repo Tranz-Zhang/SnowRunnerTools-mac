@@ -98,22 +98,25 @@ final class LoadListClassifierTests: XCTestCase {
     }
 
     func testMergedModClassifierRecognizesTextureEntries() throws {
-        let pct = try LoadListClassifier.classifyMergedInitialModEntry("[textures]\\pct\\wheels_PT67_Tire_mat__d_a.pct")
-        XCTAssertEqual(pct, LoadListRecord(
-            manifestPath: "<textures>\\pct\\wheels_PT67_Tire_mat__d_a.pct",
-            loaderType: "texture_loader",
-            sourcePak: "shared_textures_base.pak",
-            phase: "TEXTURE load"
-        ))
+        let pct = try LoadListClassifier.classifyMergedModEntry("[textures]\\pct\\wheels_PT67_Tire_mat__d_a.pct_header")
+        XCTAssertEqual(pct, [
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\wheels_PT67_Tire_mat__d_a.pct_header",
+                loaderType: "pct_mr2_header",
+                sourcePak: "shared_textures.pak",
+                phase: "TEXTURE load"
+            ),
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\wheels_PT67_Tire_mat__d_a.pct_header",
+                loaderType: "pct_faces",
+                sourcePak: "shared_textures.pak",
+                phase: "TEXTURE load"
+            )
+        ])
 
-        let png = try LoadListClassifier.classifyMergedInitialModEntry("[textures]\\shopImg1700Loadstar.png")
-        XCTAssertEqual(png, LoadListRecord(
-            manifestPath: "<textures>\\shopImg1700Loadstar.png",
-            loaderType: "texture_loader",
-            sourcePak: "shared_textures_base.pak",
-            phase: "TEXTURE load"
-        ))
+        let png = try LoadListClassifier.classifyMergedModEntry("[textures]\\shopImg1700Loadstar.png")
+        XCTAssertEqual(png, [])
 
-        XCTAssertNil(try LoadListClassifier.classifyMergedInitialModEntry("[strings]\\strings_english.str"))
+        XCTAssertEqual(try LoadListClassifier.classifyMergedModEntry("[strings]\\strings_english.str"), [])
     }
 }

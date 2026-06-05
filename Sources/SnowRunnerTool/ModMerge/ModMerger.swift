@@ -6,12 +6,14 @@ public enum ModMerger {
         outputInitialPak: URL,
         baseSharedTexturesPak: URL? = nil,
         outputSharedTexturesPak: URL? = nil,
+        baseHighSharedTexturesPak: URL? = nil,
+        outputHighSharedTexturesPak: URL? = nil,
         modPaks: [URL],
         options: ModMergeOptions
     ) throws -> ModMergeResult {
         try validateOutputPaths(
-            [outputInitialPak, outputSharedTexturesPak].compactMap { $0 },
-            inputs: [baseInitialPak, baseSharedTexturesPak].compactMap { $0 } + modPaks
+            [outputInitialPak, outputSharedTexturesPak, outputHighSharedTexturesPak].compactMap { $0 },
+            inputs: [baseInitialPak, baseSharedTexturesPak, baseHighSharedTexturesPak].compactMap { $0 } + modPaks
         )
 
         let baseArchive = try PakReader.readArchive(at: baseInitialPak)
@@ -25,7 +27,8 @@ public enum ModMerger {
         let duplicateResolution = try resolveMappedDuplicates(rawMappedEntries)
         let mappedEntries = duplicateResolution.entries
         let initialEntries = mappedEntries.filter { $0.targetArchive == .initial }
-        let textureEntries = mappedEntries.filter { $0.targetArchive == .sharedTextures }
+        let textureEntries = mappedEntries.filter { $0.targetArchive == .sharedTexturesBase }
+        let sharedTextureEntries = mappedEntries.filter { $0.targetArchive == .sharedTextures }
         let textureArchive: PakArchive?
         if textureEntries.isEmpty {
             textureArchive = nil
@@ -34,6 +37,15 @@ public enum ModMerger {
                 throw ModMergeError.missingTextureOutput
             }
             textureArchive = try PakReader.readArchive(at: baseSharedTexturesPak)
+        }
+        let sharedTextureIndex: LargePakIndex?
+        if sharedTextureEntries.isEmpty {
+            sharedTextureIndex = nil
+        } else {
+            guard let baseHighSharedTexturesPak, outputHighSharedTexturesPak != nil else {
+                throw ModMergeError.missingSharedTextureOutput
+            }
+            sharedTextureIndex = try LargePakPatcher.readIndex(input: baseHighSharedTexturesPak)
         }
 
         let baseNames = Set(baseArchive.entries.map(\.name))
@@ -46,7 +58,12 @@ public enum ModMerger {
             .map(\.internalName)
             .filter { textureBaseNames.contains($0) }
             .sorted()
-        let blockedCollisions = collisions + textureCollisions
+        let sharedTextureBaseNames = Set(sharedTextureIndex?.entryNames ?? [])
+        let sharedTextureCollisions = sharedTextureEntries
+            .map(\.internalName)
+            .filter { sharedTextureBaseNames.contains($0) }
+            .sorted()
+        let blockedCollisions = collisions + textureCollisions + sharedTextureCollisions
         if !blockedCollisions.isEmpty && !options.allowOverwrite {
             throw ModMergeError.overwriteRequired(paths: blockedCollisions)
         }
@@ -61,6 +78,9 @@ public enum ModMerger {
             textureBaseEntryCount: textureArchive?.entries.count ?? 0,
             netNewTexturePakEntryCount: textureEntries.count - textureCollisions.count,
             textureCollisions: textureCollisions,
+            sharedTextureEntryCount: sharedTextureIndex?.entryCount ?? 0,
+            netNewSharedTexturePakEntryCount: sharedTextureEntries.count - sharedTextureCollisions.count,
+            sharedTextureCollisions: sharedTextureCollisions,
             duplicateIdenticalMappedNames: duplicateResolution.duplicateIdenticalNames,
             loadListSourceOverrides: overlay.sourceOverrides,
             loadListCandidateRecords: overlay.modManagedRecords,
@@ -72,8 +92,10 @@ public enum ModMerger {
                 plan: plan,
                 outputURL: nil,
                 outputTexturesURL: nil,
+                outputSharedTexturesURL: nil,
                 writtenEntryCount: nil,
-                writtenTextureEntryCount: nil
+                writtenTextureEntryCount: nil,
+                writtenSharedTextureEntryCount: nil
             )
             try writeReportIfNeeded(result, to: options.reportURL)
             return result
@@ -114,12 +136,33 @@ public enum ModMerger {
             writtenTexture = nil
         }
 
+        let writtenSharedTexture: Int?
+        if !sharedTextureEntries.isEmpty {
+            guard let baseHighSharedTexturesPak, let outputHighSharedTexturesPak else {
+                throw ModMergeError.missingSharedTextureOutput
+            }
+            let additions = sharedTextureEntries.map {
+                LargePakPatchEntry(name: $0.internalName, data: $0.data)
+            }
+            writtenSharedTexture = try LargePakPatcher.patchArchive(
+                input: baseHighSharedTexturesPak,
+                output: outputHighSharedTexturesPak,
+                additions: additions,
+                allowOverwrite: options.allowOverwrite
+            )
+            _ = try LargePakPatcher.readIndex(input: outputHighSharedTexturesPak)
+        } else {
+            writtenSharedTexture = nil
+        }
+
         let result = ModMergeResult(
             plan: plan,
             outputURL: outputInitialPak,
             outputTexturesURL: textureEntries.isEmpty ? nil : outputSharedTexturesPak,
+            outputSharedTexturesURL: sharedTextureEntries.isEmpty ? nil : outputHighSharedTexturesPak,
             writtenEntryCount: written,
-            writtenTextureEntryCount: writtenTexture
+            writtenTextureEntryCount: writtenTexture,
+            writtenSharedTextureEntryCount: writtenSharedTexture
         )
         try writeReportIfNeeded(result, to: options.reportURL)
         return result

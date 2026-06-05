@@ -26,30 +26,36 @@ final class ModArchiveMapperTests: XCTestCase {
 
     func testMapperMapsTexturePakByContentNotFilename() throws {
         let pak = try makePak(named: "colorable_sideboards-flatbeds_pc.pak", entries: [
-            "prebuild/textures/pct/demo.pct": Data([7, 8, 9])
+            "prebuild/textures/pct/demo.pct": makeSyntheticPCT(tableCount: 10)
         ])
 
         let mapped = try ModArchiveMapper.mapArchive(at: pak)
 
-        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct"])
-        XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures])
+        XCTAssertEqual(mapped.map(\.internalName), [
+            "[textures]\\pct\\demo.pct",
+            "[textures]\\pct\\demo.pct_header"
+        ])
+        XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures, .sharedTextures])
     }
 
     func testMapperMapsExactPcPakByContent() throws {
         let pak = try makePak(named: "pc.pak", entries: [
-            "prebuild/textures/pct/demo.pct": Data([1])
+            "prebuild/textures/pct/demo.pct": makeSyntheticPCT(tableCount: 11)
         ])
 
         let mapped = try ModArchiveMapper.mapArchive(at: pak)
 
-        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct"])
-        XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures])
+        XCTAssertEqual(mapped.map(\.internalName), [
+            "[textures]\\pct\\demo.pct",
+            "[textures]\\pct\\demo.pct_header"
+        ])
+        XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures, .sharedTextures])
     }
 
     func testMapperRejectsMixedTextureAndMainModArchive() throws {
         let pak = try makePak(named: "main-mod.pak", entries: [
             "classes/trucks/demo.xml": Data("<Truck/>".utf8),
-            "prebuild/textures/pct/demo.pct": Data([1])
+            "prebuild/textures/pct/demo.pct": makeSyntheticPCT(tableCount: 1)
         ])
 
         XCTAssertThrowsError(try ModArchiveMapper.mapArchive(at: pak)) { error in
@@ -67,7 +73,7 @@ final class ModArchiveMapperTests: XCTestCase {
         }
 
         XCTAssertEqual(try ModArchiveMapper.mapArchive(at: modPak).count, 109)
-        XCTAssertEqual(try ModArchiveMapper.mapArchive(at: pcPak).count, 42)
+        XCTAssertEqual(try ModArchiveMapper.mapArchive(at: pcPak).count, 84)
     }
 
     func testMapperMapsTextFixtureAndSkipsDirectoryEntryWhenAvailable() throws {

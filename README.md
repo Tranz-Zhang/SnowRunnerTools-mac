@@ -70,26 +70,35 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache \
 swift run snowrunner-tool pak merge-mod \
   --allow-overwrite \
   --report validation/output/loadstar-merge-report.md \
-  validation/input/initial.pak \
-  validation/output/initial.loadstar-jbe.pak \
-  fixtures/loadstar_1700_jbe.pak \
-  fixtures/pc.pak
+  --input-initial validation/input/initial.pak \
+  --output-initial validation/output/initial.loadstar-jbe.pak \
+  --input-textures validation/input/shared_textures_base.pak \
+  --output-textures validation/output/shared_textures_base.pak \
+  --input-shared-textures validation/input/shared_textures.pak \
+  --output-shared-textures validation/output/shared_textures.pak \
+  --mods fixtures/loadstar_1700_jbe.pak fixtures/loadstar_1700_jbe_pc.pak
 ```
 
 Use `--dry-run` first to print the mapping, collision, and load-list summary
-without writing an output PAK. The command refuses in-place writes; back up the
-game's original `initial.pak` before manually copying a verified candidate into
-the game directory.
+without writing outputs. The command refuses in-place writes; back up the
+game's original PAKs before manually copying verified candidates into the game
+directory.
 
 First-version mod merge support is intentionally narrow:
 
 ```text
 <mod>.pak: classes/...           -> [media]\classes\...
 <mod>.pak: prebuild/meshes/...   -> [meshes]\...
-<mod>.pak: ui/textures/...       -> [textures]\...
+<mod>.pak: ui/textures/...       -> shared_textures_base.pak:[textures]\...
 <mod>.pak: texts/*.str           -> [strings]\*.str
-pc.pak:    prebuild/textures/... -> [textures]\...
+texture PAK by content:
+  prebuild/textures/pct/foo.pct
+    -> shared_textures.pak:[textures]\pct\foo.pct
+    -> shared_textures.pak:[textures]\pct\foo.pct_header
 ```
+
+PCT texture entries are indexed in `pak.load_list` as
+`pct_mr2_header` + `pct_faces` records for the generated `.pct_header`.
 
 ## Runtime Validation
 

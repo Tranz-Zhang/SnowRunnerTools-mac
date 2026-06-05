@@ -3,7 +3,8 @@ import zlib
 
 public enum ModMergeTargetArchive: String, Equatable {
     case initial = "initial.pak"
-    case sharedTextures = "shared_textures_base.pak"
+    case sharedTexturesBase = "shared_textures_base.pak"
+    case sharedTextures = "shared_textures.pak"
 }
 
 public struct ModMappedEntry: Equatable {
@@ -41,15 +42,17 @@ public enum ModArchiveMapper {
             if isDirectoryEntry(entry.name) {
                 continue
             }
-            let destination = try map(entry.name, role: role, archiveURL: url)
             let payload = try PakReader.readUncompressedPayload(entry: entry, in: archive)
-            mapped.append(ModMappedEntry(
-                archiveURL: url,
-                originalName: entry.name,
-                internalName: destination.internalName,
-                targetArchive: destination.targetArchive,
-                data: payload
-            ))
+            let destinations = try map(entry.name, role: role, archiveURL: url, payload: payload)
+            for destination in destinations {
+                mapped.append(ModMappedEntry(
+                    archiveURL: url,
+                    originalName: entry.name,
+                    internalName: destination.internalName,
+                    targetArchive: destination.targetArchive,
+                    data: destination.data
+                ))
+            }
         }
 
         return mapped
@@ -112,8 +115,9 @@ public enum ModArchiveMapper {
     private static func map(
         _ name: String,
         role: Role,
-        archiveURL: URL
-    ) throws -> (internalName: String, targetArchive: ModMergeTargetArchive) {
+        archiveURL: URL,
+        payload: Data
+    ) throws -> [(internalName: String, targetArchive: ModMergeTargetArchive, data: Data)] {
         let path = normalizedPackagePath(name)
         let archiveName = archiveURL.lastPathComponent
 
@@ -125,23 +129,33 @@ public enum ModArchiveMapper {
             guard rest.hasSuffix(".pct") else {
                 throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
             }
-            return (
-                "[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"),
-                .sharedTextures
-            )
+            let pctName = "[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\")
+            let headerData: Data
+            do {
+                headerData = try PCTHeaderGenerator.headerData(for: payload)
+            } catch {
+                throw ModMergeError.invalidModArchive(
+                    archive: archiveName,
+                    reason: "\(name) invalid PCT texture: \(error)"
+                )
+            }
+            return [
+                (pctName, .sharedTextures, payload),
+                (pctName + "_header", .sharedTextures, headerData)
+            ]
 
         case .mainMod:
             if let rest = consumePrefix("classes/", from: path), !rest.isEmpty {
-                return ("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial)
+                return [("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload)]
             }
             if let rest = consumePrefix("prebuild/meshes/", from: path), !rest.isEmpty {
-                return ("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial)
+                return [("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload)]
             }
             if let rest = consumePrefix("ui/textures/", from: path), !rest.isEmpty {
-                return ("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTextures)
+                return [("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTexturesBase, payload)]
             }
             if let rest = consumePrefix("texts/", from: path), !rest.isEmpty, rest.hasSuffix(".str") {
-                return ("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial)
+                return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload)]
             }
             throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
         }

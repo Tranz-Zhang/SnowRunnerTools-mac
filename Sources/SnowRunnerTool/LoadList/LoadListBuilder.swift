@@ -42,6 +42,12 @@ public enum LoadListBuilder {
                 let l = lhs.manifestPath.lowercased()
                 let r = rhs.manifestPath.lowercased()
                 if l != r { return l < r }
+                let lhsRank = loaderSortRank(lhs.loaderType)
+                let rhsRank = loaderSortRank(rhs.loaderType)
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
+                if lhs.loaderType != rhs.loaderType { return lhs.loaderType < rhs.loaderType }
+                if lhs.sourcePak != rhs.sourcePak { return lhs.sourcePak < rhs.sourcePak }
+                if (lhs.json ?? "") != (rhs.json ?? "") { return (lhs.json ?? "") < (rhs.json ?? "") }
                 return lhs.manifestPath < rhs.manifestPath
             }
             try assertNoDuplicates(in: sorted, phase: phase)
@@ -83,7 +89,8 @@ public enum LoadListBuilder {
     ) throws {
         var seenExact: Set<String> = []
         for record in records {
-            if !seenExact.insert(record.manifestPath).inserted {
+            let key = recordIdentity(record)
+            if !seenExact.insert(key).inserted {
                 throw LoadListError.duplicateRecord(phase: phase, path: record.manifestPath)
             }
         }
@@ -122,18 +129,29 @@ public enum LoadListBuilder {
         for phase in phaseOrder {
             let groupHead = entries.count   // first asset index for this phase
             let assets = byPhase[phase] ?? []
+            var pctHeaderEntryIndexByPath: [String: Int] = [:]
             for record in assets {
                 var strings = [record.manifestPath, record.loaderType, record.sourcePak]
                 if let json = record.json {
                     strings.append(json)
                 }
+                let dependsOn: [Int32]
+                if isPCTFacesLoader(record.loaderType),
+                   let headerEntryIndex = pctHeaderEntryIndexByPath[record.manifestPath] {
+                    dependsOn = [Int32(headerEntryIndex)]
+                } else {
+                    dependsOn = [Int32(anchorIndex)]
+                }
                 entries.append(LoadListEntry(
                     kind: .asset,
-                    dependsOn: [Int32(anchorIndex)],
+                    dependsOn: dependsOn,
                     magicA: Array(repeating: 0x01, count: strings.count),
                     magicB: [0x01, 0x01],
                     strings: strings
                 ))
+                if record.loaderType == "pct_mr2_header" {
+                    pctHeaderEntryIndexByPath[record.manifestPath] = entries.count - 1
+                }
             }
             let stageIndex = entries.count
             let groupSize = stageIndex - groupHead
@@ -164,5 +182,30 @@ public enum LoadListBuilder {
         ))
 
         return entries
+    }
+
+    private static func recordIdentity(_ record: LoadListRecord) -> String {
+        [
+            record.phase,
+            record.manifestPath,
+            record.loaderType,
+            record.sourcePak,
+            record.json ?? ""
+        ].joined(separator: "\u{1F}")
+    }
+
+    private static func loaderSortRank(_ loader: String) -> Int {
+        switch loader {
+        case "pct_mr2_header":
+            return 0
+        case "pct_faces", "pct_inplace_faces":
+            return 1
+        default:
+            return 2
+        }
+    }
+
+    private static func isPCTFacesLoader(_ loader: String) -> Bool {
+        loader == "pct_faces" || loader == "pct_inplace_faces"
     }
 }

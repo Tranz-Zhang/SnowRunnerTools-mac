@@ -86,6 +86,32 @@ final class LoadListBuilderTests: XCTestCase {
         }
     }
 
+    func testBuilderAllowsTextureHeaderAndFacesRecordsWithSamePath() throws {
+        let header = LoadListRecord(
+            manifestPath: "<textures>\\pct\\demo.pct_header",
+            loaderType: "pct_mr2_header",
+            sourcePak: "shared_textures.pak",
+            phase: "TEXTURE load"
+        )
+        let faces = LoadListRecord(
+            manifestPath: "<textures>\\pct\\demo.pct_header",
+            loaderType: "pct_faces",
+            sourcePak: "shared_textures.pak",
+            phase: "TEXTURE load"
+        )
+
+        let manifest = try LoadListBuilder.buildManifest(records: [faces, header])
+        let textureRecords = manifest.recordsByPhase["TEXTURE load"] ?? []
+
+        XCTAssertEqual(textureRecords.map(\.loaderType), ["pct_mr2_header", "pct_faces"])
+        let textureAssets = manifest.entries.filter { entry in
+            entry.kind == .asset && entry.strings.first == "<textures>\\pct\\demo.pct_header"
+        }
+        XCTAssertEqual(textureAssets.count, 2)
+        let headerIndex = try XCTUnwrap(manifest.entries.firstIndex(of: textureAssets[0]))
+        XCTAssertEqual(textureAssets[1].dependsOn, [Int32(headerIndex)])
+    }
+
     func testBuilderPreservesAssetJsonString() throws {
         let record = LoadListRecord(
             manifestPath: "<media>\\classes\\trucks\\json_truck.xml",

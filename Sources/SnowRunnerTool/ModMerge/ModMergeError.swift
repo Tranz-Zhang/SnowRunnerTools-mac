@@ -8,6 +8,7 @@ public enum ModMergeError: Error, CustomStringConvertible, Equatable {
     case outputPathMatchesInput(String)
     case missingBaseManifest
     case missingTextureOutput
+    case missingSharedTextureOutput
     case verificationFailed(name: String, issues: [VerifierIssue])
 
     public var description: String {
@@ -27,6 +28,8 @@ public enum ModMergeError: Error, CustomStringConvertible, Equatable {
             return "Base initial.pak does not contain pak.load_list"
         case .missingTextureOutput:
             return "Texture merge requires --input-textures and --output-textures"
+        case .missingSharedTextureOutput:
+            return "PCT texture merge requires --input-shared-textures and --output-shared-textures"
         case let .verificationFailed(name, issues):
             let details = issues.map { "\($0.code): \($0.message)" }.joined(separator: "\n")
             return "\(name) failed:\n\(details)"

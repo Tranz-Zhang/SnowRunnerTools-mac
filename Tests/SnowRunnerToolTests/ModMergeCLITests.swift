@@ -37,17 +37,20 @@ final class ModMergeCLITests: XCTestCase {
     func testCLIMergeModWritesInitialAndTextureOutputsWithNamedSyntax() throws {
         let base = try makeSyntheticInitialPak()
         let baseTextures = try makeSyntheticSharedTexturesPak(entries: [:])
+        let baseSharedTextures = try makeSyntheticHighSharedTexturesPak(entries: [:])
         let mod = try makePak(named: "main-mod.pak", entries: [
             "classes/trucks/new.xml": Data("<Truck/>".utf8),
             "ui/textures/icon.png": Data([4, 5, 6])
         ])
         let pc = try makePak(named: "colorable_sideboards-flatbeds_pc.pak", entries: [
-            "prebuild/textures/pct/new_texture.pct": Data([7, 8, 9])
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 11)
         ])
         let output = try temporaryDirectory(named: "cli-merge-output")
             .appendingPathComponent("initial.merged.pak")
         let outputTextures = try temporaryDirectory(named: "cli-merge-textures-output")
             .appendingPathComponent("shared_textures_base.merged.pak")
+        let outputSharedTextures = try temporaryDirectory(named: "cli-merge-shared-textures-output")
+            .appendingPathComponent("shared_textures.merged.pak")
 
         let result = CLI.run(arguments: [
             "pak", "merge-mod",
@@ -55,20 +58,24 @@ final class ModMergeCLITests: XCTestCase {
             "--output-initial", output.path,
             "--input-textures", baseTextures.path,
             "--output-textures", outputTextures.path,
+            "--input-shared-textures", baseSharedTextures.path,
+            "--output-shared-textures", outputSharedTextures.path,
             "--mods", mod.path, pc.path
         ])
 
         XCTAssertEqual(result.exitCode, 0, result.stderr)
         XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: outputTextures.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outputSharedTextures.path))
         XCTAssertTrue(result.stdout.contains("written initial: \(output.path)"))
         XCTAssertTrue(result.stdout.contains("written textures: \(outputTextures.path)"))
+        XCTAssertTrue(result.stdout.contains("written shared textures: \(outputSharedTextures.path)"))
     }
 
-    func testCLIMergeModTextureMergeRequiresTextureArguments() throws {
+    func testCLIMergeModPCTTextureMergeRequiresSharedTextureArguments() throws {
         let base = try makeSyntheticInitialPak()
         let pc = try makePak(named: "renamed_texture_archive.pak", entries: [
-            "prebuild/textures/pct/new_texture.pct": Data([7, 8, 9])
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 10)
         ])
         let output = try temporaryDirectory(named: "cli-merge-output")
             .appendingPathComponent("initial.merged.pak")
@@ -81,7 +88,7 @@ final class ModMergeCLITests: XCTestCase {
         ])
 
         XCTAssertEqual(result.exitCode, 1)
-        XCTAssertTrue(result.stderr.contains("Texture merge requires --input-textures and --output-textures"))
+        XCTAssertTrue(result.stderr.contains("PCT texture merge requires --input-shared-textures and --output-shared-textures"))
     }
 
     func testCLIMergeModRejectsOldPositionalSyntax() throws {
@@ -140,6 +147,19 @@ func makePak(named name: String, entries: [String: Data]) throws -> URL {
 func makeSyntheticSharedTexturesPak(entries: [String: Data]) throws -> URL {
     let output = try temporaryDirectory(named: "synthetic-shared-textures")
         .appendingPathComponent("shared_textures_base.pak")
+    let sources = try PakDirectoryScanner.sortedPackSources(
+        entries.keys.sorted().map { key in
+            PakFileSource(internalName: key, data: entries[key]!)
+        },
+        requirePakLoadList: false
+    )
+    try PakWriter.writeArchive(fileSources: sources, to: output)
+    return output
+}
+
+func makeSyntheticHighSharedTexturesPak(entries: [String: Data]) throws -> URL {
+    let output = try temporaryDirectory(named: "synthetic-high-shared-textures")
+        .appendingPathComponent("shared_textures.pak")
     let sources = try PakDirectoryScanner.sortedPackSources(
         entries.keys.sorted().map { key in
             PakFileSource(internalName: key, data: entries[key]!)

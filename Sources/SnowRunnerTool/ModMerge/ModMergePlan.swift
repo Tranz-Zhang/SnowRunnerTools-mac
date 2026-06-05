@@ -8,6 +8,9 @@ public struct ModMergePlan: Equatable {
     public let textureBaseEntryCount: Int
     public let netNewTexturePakEntryCount: Int
     public let textureCollisions: [String]
+    public let sharedTextureEntryCount: Int
+    public let netNewSharedTexturePakEntryCount: Int
+    public let sharedTextureCollisions: [String]
     public let duplicateIdenticalMappedNames: [String]
     public let loadListSourceOverrides: [ModLoadListSourceOverride]
     public let loadListCandidateRecords: [LoadListRecord]
@@ -16,8 +19,8 @@ public struct ModMergePlan: Equatable {
     public var textureLoadListRecordCount: Int {
         loadListCandidateRecords.filter {
             $0.manifestPath.hasPrefix("<textures>\\")
-                && $0.loaderType == "texture_loader"
-                && $0.sourcePak == "shared_textures_base.pak"
+                && ($0.loaderType == "pct_mr2_header" || $0.loaderType == "pct_faces")
+                && $0.sourcePak == "shared_textures.pak"
         }.count
     }
 }
@@ -26,8 +29,10 @@ public struct ModMergeResult: Equatable {
     public let plan: ModMergePlan
     public let outputURL: URL?
     public let outputTexturesURL: URL?
+    public let outputSharedTexturesURL: URL?
     public let writtenEntryCount: Int?
     public let writtenTextureEntryCount: Int?
+    public let writtenSharedTextureEntryCount: Int?
 }
 
 public struct ModMergeOptions: Equatable {

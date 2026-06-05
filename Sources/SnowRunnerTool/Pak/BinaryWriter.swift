@@ -37,6 +37,10 @@ public struct BinaryWriter {
         data.append(UInt8((raw >> 56) & 0x00000000000000FF))
     }
 
+    public mutating func appendUInt64(_ value: UInt64) {
+        appendInt64(Int64(bitPattern: value))
+    }
+
     public mutating func appendBytes(_ bytes: [UInt8]) {
         data.append(contentsOf: bytes)
     }

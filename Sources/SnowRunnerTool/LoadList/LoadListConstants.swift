@@ -35,7 +35,8 @@ public enum LoadListConstants {
         "shared_debug.pak",
         "shared.pak",
         "shared_sound.pak",
-        "shared_textures_base.pak"
+        "shared_textures_base.pak",
+        "shared_textures.pak"
     ]
 
     public static let knownLoaderTypes: [String] = [
@@ -45,6 +46,8 @@ public enum LoadListConstants {
         "cls_loader",
         "mesh_loader",
         "sound_loader",
-        "texture_loader"
+        "pct_mr2_header",
+        "pct_faces",
+        "pct_inplace_faces"
     ]
 }

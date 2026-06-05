@@ -115,62 +115,79 @@ public enum LoadListClassifier {
     /// while allowing v1 mod payloads that intentionally do not get load-list
     /// records.
     public static func classifyMergedInitialModEntry(_ internalName: String) throws -> LoadListRecord? {
+        try classifyMergedModEntry(internalName).first
+    }
+
+    public static func classifyMergedModEntry(_ internalName: String) throws -> [LoadListRecord] {
         if internalName.hasPrefix("[ui]\\") || internalName.hasPrefix("[strings]\\") {
-            return nil
+            return []
         }
 
         let manifestPath = convertNamespaceBrackets(internalName)
 
+        if manifestPath.hasPrefix("<textures>\\pct\\"), manifestPath.hasSuffix(".pct_header") {
+            return [
+                LoadListRecord(
+                    manifestPath: manifestPath,
+                    loaderType: "pct_mr2_header",
+                    sourcePak: "shared_textures.pak",
+                    json: nil,
+                    phase: "TEXTURE load"
+                ),
+                LoadListRecord(
+                    manifestPath: manifestPath,
+                    loaderType: "pct_faces",
+                    sourcePak: "shared_textures.pak",
+                    json: nil,
+                    phase: "TEXTURE load"
+                )
+            ]
+        }
+
         if manifestPath.hasPrefix("<textures>\\") {
-            return LoadListRecord(
-                manifestPath: manifestPath,
-                loaderType: "texture_loader",
-                sourcePak: "shared_textures_base.pak",
-                json: nil,
-                phase: "TEXTURE load"
-            )
+            return []
         }
 
         if manifestPath.hasPrefix("<media>\\_templates\\"), manifestPath.hasSuffix(".xml") {
-            return LoadListRecord(
+            return [LoadListRecord(
                 manifestPath: manifestPath,
                 loaderType: "tpl_loader",
                 sourcePak: "initial.pak",
                 json: nil,
                 phase: "TEMPLATES load"
-            )
+            )]
         }
 
         if manifestPath.hasPrefix("<media>\\"),
            manifestPath.hasSuffix(".xml"),
            manifestPath.contains("\\classes\\") {
-            return LoadListRecord(
+            return [LoadListRecord(
                 manifestPath: manifestPath,
                 loaderType: "cls_loader",
                 sourcePak: "initial.pak",
                 json: nil,
                 phase: "CLASSES load"
-            )
+            )]
         }
 
         if manifestPath.hasPrefix("<ssl_cache>\\"), manifestPath.hasSuffix(".sslbundle") {
-            return LoadListRecord(
+            return [LoadListRecord(
                 manifestPath: manifestPath,
                 loaderType: "sslbundle",
                 sourcePak: "initial.pak",
                 json: nil,
                 phase: "SSL_INITIAL load"
-            )
+            )]
         }
 
         if manifestPath.hasPrefix("<meshes>\\") {
-            return LoadListRecord(
+            return [LoadListRecord(
                 manifestPath: manifestPath,
                 loaderType: "mesh_loader",
                 sourcePak: "initial.pak",
                 json: nil,
                 phase: "MESH load"
-            )
+            )]
         }
 
         throw LoadListError.invalidManifestPath(internalName)

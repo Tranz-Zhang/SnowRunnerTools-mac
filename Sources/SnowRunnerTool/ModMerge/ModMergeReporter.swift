@@ -6,8 +6,10 @@ public enum ModMergeReporter {
             "merged \(result.plan.mappedModEntryCount) mod entries",
             "initial overwrites: \(result.plan.collisions.count)",
             "texture overwrites: \(result.plan.textureCollisions.count)",
+            "shared texture overwrites: \(result.plan.sharedTextureCollisions.count)",
             "net new initial PAK entries: \(result.plan.netNewOuterPakEntryCount)",
             "net new texture PAK entries: \(result.plan.netNewTexturePakEntryCount)",
+            "net new shared texture PAK entries: \(result.plan.netNewSharedTexturePakEntryCount)",
             "mod-managed load-list records: \(result.plan.loadListCandidateRecords.count)",
             "texture load-list records: \(result.plan.textureLoadListRecordCount)",
             "net-new load-list records before source overrides: \(result.plan.netNewLoadListRecordCount)",
@@ -23,6 +25,11 @@ public enum ModMergeReporter {
         } else if result.plan.textureBaseEntryCount > 0 || result.plan.netNewTexturePakEntryCount > 0 || !result.plan.textureCollisions.isEmpty {
             lines.append("dry-run textures: no output written")
         }
+        if let outputSharedTexturesURL = result.outputSharedTexturesURL {
+            lines.append("written shared textures: \(outputSharedTexturesURL.path)")
+        } else if result.plan.sharedTextureEntryCount > 0 || result.plan.netNewSharedTexturePakEntryCount > 0 || !result.plan.sharedTextureCollisions.isEmpty {
+            lines.append("dry-run shared textures: no output written")
+        }
         return lines.joined(separator: "\n") + "\n"
     }
 
@@ -34,8 +41,10 @@ public enum ModMergeReporter {
             "- mapped mod entries: \(plan.mappedModEntryCount)",
             "- initial entry replacements: \(plan.collisions.count)",
             "- texture entry replacements: \(plan.textureCollisions.count)",
+            "- shared texture entry replacements: \(plan.sharedTextureCollisions.count)",
             "- net new initial PAK entries: \(plan.netNewOuterPakEntryCount)",
             "- net new texture PAK entries: \(plan.netNewTexturePakEntryCount)",
+            "- net new shared texture PAK entries: \(plan.netNewSharedTexturePakEntryCount)",
             "- mod-managed load-list records: \(plan.loadListCandidateRecords.count)",
             "- texture load-list records: \(plan.textureLoadListRecordCount)",
             "- net-new load-list records before source overrides: \(plan.netNewLoadListRecordCount)",
@@ -52,9 +61,15 @@ public enum ModMergeReporter {
         } else if plan.textureBaseEntryCount > 0 || plan.netNewTexturePakEntryCount > 0 || !plan.textureCollisions.isEmpty {
             lines.append("- texture output: dry-run")
         }
+        if let outputSharedTexturesURL = result.outputSharedTexturesURL {
+            lines.append("- shared texture output: \(outputSharedTexturesURL.path)")
+        } else if plan.sharedTextureEntryCount > 0 || plan.netNewSharedTexturePakEntryCount > 0 || !plan.sharedTextureCollisions.isEmpty {
+            lines.append("- shared texture output: dry-run")
+        }
 
         appendSection("Initial Entry Replacements", values: plan.collisions, into: &lines)
         appendSection("Texture Entry Replacements", values: plan.textureCollisions, into: &lines)
+        appendSection("Shared Texture Entry Replacements", values: plan.sharedTextureCollisions, into: &lines)
         appendSection("Identical Duplicate Mod Entries", values: plan.duplicateIdenticalMappedNames, into: &lines)
         appendSection(
             "Load-List Source Overrides",
