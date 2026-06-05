@@ -111,15 +111,25 @@ public enum LoadListClassifier {
     }
 
     /// Classifier for mod entries that have already been mapped into the
-    /// `initial.pak` runtime namespace. It preserves the strict full-rebuild
-    /// classifier while allowing v1 mod payloads that intentionally do not get
-    /// load-list records.
+    /// merge runtime namespace. It preserves the strict full-rebuild classifier
+    /// while allowing v1 mod payloads that intentionally do not get load-list
+    /// records.
     public static func classifyMergedInitialModEntry(_ internalName: String) throws -> LoadListRecord? {
-        if internalName.hasPrefix("[textures]\\") || internalName.hasPrefix("[ui]\\") || internalName.hasPrefix("[strings]\\") {
+        if internalName.hasPrefix("[ui]\\") || internalName.hasPrefix("[strings]\\") {
             return nil
         }
 
         let manifestPath = convertNamespaceBrackets(internalName)
+
+        if manifestPath.hasPrefix("<textures>\\") {
+            return LoadListRecord(
+                manifestPath: manifestPath,
+                loaderType: "texture_loader",
+                sourcePak: "shared_textures_base.pak",
+                json: nil,
+                phase: "TEXTURE load"
+            )
+        }
 
         if manifestPath.hasPrefix("<media>\\_templates\\"), manifestPath.hasSuffix(".xml") {
             return LoadListRecord(

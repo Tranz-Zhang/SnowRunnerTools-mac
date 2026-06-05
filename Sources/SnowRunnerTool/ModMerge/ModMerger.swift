@@ -51,7 +51,7 @@ public enum ModMerger {
             throw ModMergeError.overwriteRequired(paths: blockedCollisions)
         }
 
-        let overlay = try ModLoadListOverlay.overlay(baseManifest: baseManifest, mappedEntries: initialEntries)
+        let overlay = try ModLoadListOverlay.overlay(baseManifest: baseManifest, mappedEntries: mappedEntries)
         let loadListData = try LoadListWriter.encodeManifest(overlay.manifest)
         let plan = ModMergePlan(
             baseEntryCount: baseArchive.entries.count,

@@ -22,17 +22,29 @@ final class ModMergePlanTests: XCTestCase {
             ModMappedEntry(
                 archiveURL: URL(fileURLWithPath: "pc.pak"),
                 originalName: "prebuild/textures/new.pct",
-                internalName: "[textures]\\new.pct",
+                internalName: "[textures]\\pct\\new.pct",
+                targetArchive: .sharedTextures,
                 data: Data([2])
             )
         ]
 
         let result = try ModLoadListOverlay.overlay(baseManifest: base, mappedEntries: mapped)
 
-        XCTAssertEqual(result.modManagedRecords.map(\.manifestPath), ["<meshes>\\new_mesh"])
-        XCTAssertEqual(result.netNewRecordCount, 1)
+        XCTAssertEqual(result.modManagedRecords.map(\.manifestPath), [
+            "<meshes>\\new_mesh",
+            "<textures>\\pct\\new.pct"
+        ])
+        XCTAssertEqual(result.netNewRecordCount, 2)
         XCTAssertTrue(result.sourceOverrides.isEmpty)
         XCTAssertEqual(result.manifest.recordsByPhase["MESH load"]?.map(\.sourcePak).sorted(), ["initial.pak", "shared.pak"])
+        XCTAssertEqual(result.manifest.recordsByPhase["TEXTURE load"], [
+            LoadListRecord(
+                manifestPath: "<textures>\\pct\\new.pct",
+                loaderType: "texture_loader",
+                sourcePak: "shared_textures_base.pak",
+                phase: "TEXTURE load"
+            )
+        ])
     }
 
     func testOverlayReportsSourceOverride() throws {
@@ -65,4 +77,3 @@ final class ModMergePlanTests: XCTestCase {
         ])
     }
 }
-

@@ -12,6 +12,14 @@ public struct ModMergePlan: Equatable {
     public let loadListSourceOverrides: [ModLoadListSourceOverride]
     public let loadListCandidateRecords: [LoadListRecord]
     public let netNewLoadListRecordCount: Int
+
+    public var textureLoadListRecordCount: Int {
+        loadListCandidateRecords.filter {
+            $0.manifestPath.hasPrefix("<textures>\\")
+                && $0.loaderType == "texture_loader"
+                && $0.sourcePak == "shared_textures_base.pak"
+        }.count
+    }
 }
 
 public struct ModMergeResult: Equatable {

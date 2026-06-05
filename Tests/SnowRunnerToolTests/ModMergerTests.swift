@@ -60,8 +60,9 @@ final class ModMergerTests: XCTestCase {
         XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 1)
         XCTAssertEqual(result.plan.textureCollisions, [])
         XCTAssertEqual(result.plan.netNewTexturePakEntryCount, 2)
-        XCTAssertEqual(result.plan.loadListCandidateRecords.count, 2)
-        XCTAssertEqual(result.plan.netNewLoadListRecordCount, 1)
+        XCTAssertEqual(result.plan.loadListCandidateRecords.count, 4)
+        XCTAssertEqual(result.plan.textureLoadListRecordCount, 2)
+        XCTAssertEqual(result.plan.netNewLoadListRecordCount, 3)
 
         let archive = try PakReader.readArchive(at: output)
         XCTAssertTrue(try PakVerifier.verifyBasic(archive).isEmpty)
@@ -72,7 +73,7 @@ final class ModMergerTests: XCTestCase {
 
         let textureArchive = try PakReader.readArchive(at: outputTextures)
         XCTAssertTrue(textureArchive.entries.contains { $0.name == "[textures]\\pct\\existing_texture.pct_base" })
-        XCTAssertTrue(textureArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct_base" })
+        XCTAssertTrue(textureArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct" })
         XCTAssertTrue(textureArchive.entries.contains { $0.name == "[textures]\\icon.png" })
 
         let manifestEntry = try XCTUnwrap(archive.entries.first { $0.name == LoadListConstants.manifestEntryName })
@@ -84,9 +85,20 @@ final class ModMergerTests: XCTestCase {
                 && $0.loaderType == "mesh_loader"
                 && $0.sourcePak == "initial.pak"
         })
-        let textureRecords = manifest.phaseOrder.flatMap { manifest.recordsByPhase[$0] ?? [] }
-            .filter { $0.manifestPath.contains("<textures>") || $0.manifestPath.contains("<ui>") || $0.manifestPath.contains("<strings>") }
-        XCTAssertTrue(textureRecords.isEmpty)
+        let textureRecords = manifest.recordsByPhase["TEXTURE load"] ?? []
+        XCTAssertTrue(textureRecords.contains {
+            $0.manifestPath == "<textures>\\pct\\new_texture.pct"
+                && $0.loaderType == "texture_loader"
+                && $0.sourcePak == "shared_textures_base.pak"
+        })
+        XCTAssertTrue(textureRecords.contains {
+            $0.manifestPath == "<textures>\\icon.png"
+                && $0.loaderType == "texture_loader"
+                && $0.sourcePak == "shared_textures_base.pak"
+        })
+        let skippedRecords = manifest.phaseOrder.flatMap { manifest.recordsByPhase[$0] ?? [] }
+            .filter { $0.manifestPath.contains("<ui>") || $0.manifestPath.contains("<strings>") }
+        XCTAssertTrue(skippedRecords.isEmpty)
     }
 
     func testMergerRequiresTextureOutputsWhenTextureEntriesExist() throws {
@@ -113,7 +125,7 @@ final class ModMergerTests: XCTestCase {
     func testMergerRequiresOverwriteForTextureCollision() throws {
         let base = try makeSyntheticInitialPak()
         let baseTextures = try makeSyntheticSharedTexturesPak(entries: [
-            "[textures]\\pct\\new_texture.pct_base": Data([1])
+            "[textures]\\pct\\new_texture.pct": Data([1])
         ])
         let pc = try makePak(named: "renamed_pc_archive.pak", entries: [
             "prebuild/textures/pct/new_texture.pct": Data([7, 8, 9])
@@ -135,7 +147,7 @@ final class ModMergerTests: XCTestCase {
                 XCTFail("expected overwriteRequired, got \(error)")
                 return
             }
-            XCTAssertEqual(paths, ["[textures]\\pct\\new_texture.pct_base"])
+            XCTAssertEqual(paths, ["[textures]\\pct\\new_texture.pct"])
         }
     }
 
@@ -161,7 +173,46 @@ final class ModMergerTests: XCTestCase {
 
         XCTAssertNil(result.outputURL)
         XCTAssertNil(result.outputTexturesURL)
+        XCTAssertEqual(result.plan.textureLoadListRecordCount, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputTextures.path))
+    }
+
+    func testMergerReportCountsTextureLoadListRecordsSeparately() throws {
+        let plan = ModMergePlan(
+            baseEntryCount: 1,
+            mappedModEntryCount: 2,
+            netNewOuterPakEntryCount: 0,
+            collisions: [],
+            textureBaseEntryCount: 1,
+            netNewTexturePakEntryCount: 2,
+            textureCollisions: [],
+            duplicateIdenticalMappedNames: [],
+            loadListSourceOverrides: [],
+            loadListCandidateRecords: [
+                LoadListRecord(
+                    manifestPath: "<media>\\classes\\trucks\\new.xml",
+                    loaderType: "cls_loader",
+                    sourcePak: "initial.pak",
+                    phase: "CLASSES load"
+                ),
+                LoadListRecord(
+                    manifestPath: "<textures>\\pct\\new_texture.pct",
+                    loaderType: "texture_loader",
+                    sourcePak: "shared_textures_base.pak",
+                    phase: "TEXTURE load"
+                )
+            ],
+            netNewLoadListRecordCount: 2
+        )
+        let report = ModMergeReporter.stdout(result: ModMergeResult(
+            plan: plan,
+            outputURL: nil,
+            outputTexturesURL: nil,
+            writtenEntryCount: nil,
+            writtenTextureEntryCount: nil
+        ))
+
+        XCTAssertTrue(report.contains("texture load-list records: 1"))
     }
 }

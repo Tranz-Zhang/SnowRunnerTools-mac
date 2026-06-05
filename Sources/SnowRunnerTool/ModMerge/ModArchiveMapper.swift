@@ -125,9 +125,8 @@ public enum ModArchiveMapper {
             guard rest.hasSuffix(".pct") else {
                 throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
             }
-            let mappedRest = String(rest.dropLast(".pct".count)) + ".pct_base"
             return (
-                "[textures]\\" + mappedRest.replacingOccurrences(of: "/", with: "\\"),
+                "[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"),
                 .sharedTextures
             )
 

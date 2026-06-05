@@ -31,7 +31,7 @@ final class ModArchiveMapperTests: XCTestCase {
 
         let mapped = try ModArchiveMapper.mapArchive(at: pak)
 
-        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct_base"])
+        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct"])
         XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures])
     }
 
@@ -42,7 +42,7 @@ final class ModArchiveMapperTests: XCTestCase {
 
         let mapped = try ModArchiveMapper.mapArchive(at: pak)
 
-        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct_base"])
+        XCTAssertEqual(mapped.map(\.internalName), ["[textures]\\pct\\demo.pct"])
         XCTAssertEqual(mapped.map(\.targetArchive), [.sharedTextures])
     }
 

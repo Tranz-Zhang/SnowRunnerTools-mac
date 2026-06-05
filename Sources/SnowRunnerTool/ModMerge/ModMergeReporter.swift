@@ -9,6 +9,7 @@ public enum ModMergeReporter {
             "net new initial PAK entries: \(result.plan.netNewOuterPakEntryCount)",
             "net new texture PAK entries: \(result.plan.netNewTexturePakEntryCount)",
             "mod-managed load-list records: \(result.plan.loadListCandidateRecords.count)",
+            "texture load-list records: \(result.plan.textureLoadListRecordCount)",
             "net-new load-list records before source overrides: \(result.plan.netNewLoadListRecordCount)",
             "load-list source overrides: \(result.plan.loadListSourceOverrides.count)"
         ]
@@ -36,6 +37,7 @@ public enum ModMergeReporter {
             "- net new initial PAK entries: \(plan.netNewOuterPakEntryCount)",
             "- net new texture PAK entries: \(plan.netNewTexturePakEntryCount)",
             "- mod-managed load-list records: \(plan.loadListCandidateRecords.count)",
+            "- texture load-list records: \(plan.textureLoadListRecordCount)",
             "- net-new load-list records before source overrides: \(plan.netNewLoadListRecordCount)",
             "- load-list source overrides: \(plan.loadListSourceOverrides.count)"
         ]

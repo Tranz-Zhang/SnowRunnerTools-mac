@@ -96,4 +96,24 @@ final class LoadListClassifierTests: XCTestCase {
             }
         }
     }
+
+    func testMergedModClassifierRecognizesTextureEntries() throws {
+        let pct = try LoadListClassifier.classifyMergedInitialModEntry("[textures]\\pct\\wheels_PT67_Tire_mat__d_a.pct")
+        XCTAssertEqual(pct, LoadListRecord(
+            manifestPath: "<textures>\\pct\\wheels_PT67_Tire_mat__d_a.pct",
+            loaderType: "texture_loader",
+            sourcePak: "shared_textures_base.pak",
+            phase: "TEXTURE load"
+        ))
+
+        let png = try LoadListClassifier.classifyMergedInitialModEntry("[textures]\\shopImg1700Loadstar.png")
+        XCTAssertEqual(png, LoadListRecord(
+            manifestPath: "<textures>\\shopImg1700Loadstar.png",
+            loaderType: "texture_loader",
+            sourcePak: "shared_textures_base.pak",
+            phase: "TEXTURE load"
+        ))
+
+        XCTAssertNil(try LoadListClassifier.classifyMergedInitialModEntry("[strings]\\strings_english.str"))
+    }
 }
