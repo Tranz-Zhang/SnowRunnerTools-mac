@@ -3,15 +3,26 @@ import Foundation
 public struct PakFileSource: Equatable {
     public let internalName: String
     public let payload: PakSourcePayload
+    public let localExtraField: Data
+    public let centralExtraField: Data
 
     public init(internalName: String, fileURL: URL) {
         self.internalName = internalName
         self.payload = .fileURL(fileURL)
+        self.localExtraField = Data()
+        self.centralExtraField = Data()
     }
 
-    public init(internalName: String, data: Data) {
+    public init(
+        internalName: String,
+        data: Data,
+        localExtraField: Data = Data(),
+        centralExtraField: Data = Data()
+    ) {
         self.internalName = internalName
         self.payload = .data(data)
+        self.localExtraField = localExtraField
+        self.centralExtraField = centralExtraField
     }
 
     public var fileURL: URL? {

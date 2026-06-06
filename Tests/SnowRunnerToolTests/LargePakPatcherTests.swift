@@ -29,6 +29,33 @@ final class LargePakPatcherTests: XCTestCase {
         ])
     }
 
+    func testPatcherPreservesCentralExtraFieldForNewTextureEntries() throws {
+        let base = try makePak(named: "shared_textures.pak", entries: [
+            "[textures]\\pct\\existing.pct": Data([1, 2, 3])
+        ])
+        let output = try temporaryDirectory(named: "large-pak-patcher")
+            .appendingPathComponent("shared_textures.merged.pak")
+        let textureExtraField = Data([0x02, 0xF0, 0x04, 0x00, 1, 2, 3, 4])
+
+        _ = try LargePakPatcher.patchArchive(
+            input: base,
+            output: output,
+            additions: [
+                LargePakPatchEntry(
+                    name: "[textures]\\pct\\new.pct",
+                    data: Data([4, 5, 6]),
+                    centralExtraField: textureExtraField
+                )
+            ],
+            allowOverwrite: false
+        )
+
+        let archive = try PakReader.readArchive(at: output)
+        let entry = try XCTUnwrap(archive.entries.first { $0.name == "[textures]\\pct\\new.pct" })
+        XCTAssertEqual(entry.localExtraField, Data())
+        XCTAssertEqual(entry.centralExtraField, textureExtraField)
+    }
+
     func testPatcherRejectsCollisionWithoutOverwrite() throws {
         let base = try makePak(named: "shared_textures.pak", entries: [
             "[textures]\\pct\\existing.pct": Data([1, 2, 3])

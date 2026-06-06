@@ -4,10 +4,12 @@ import zlib
 public struct LargePakPatchEntry: Equatable {
     public let name: String
     public let data: Data
+    public let centralExtraField: Data
 
-    public init(name: String, data: Data) {
+    public init(name: String, data: Data, centralExtraField: Data = Data()) {
         self.name = name
         self.data = data
+        self.centralExtraField = centralExtraField
     }
 }
 
@@ -191,15 +193,17 @@ public enum LargePakPatcher {
         return finalRecords.count
     }
 
-    private static func uniqueAdditions(_ additions: [LargePakPatchEntry]) throws -> [String: Data] {
-        var byName: [String: Data] = [:]
+    private static func uniqueAdditions(_ additions: [LargePakPatchEntry]) throws -> [String: LargePakPatchEntry] {
+        var byName: [String: LargePakPatchEntry] = [:]
         for addition in additions {
             if let existing = byName[addition.name] {
-                guard existing == addition.data else {
+                guard existing.data == addition.data,
+                      existing.centralExtraField == addition.centralExtraField
+                else {
                     throw LargePakPatcherError.conflictingAddition(addition.name)
                 }
             } else {
-                byName[addition.name] = addition.data
+                byName[addition.name] = addition
             }
         }
         return byName
@@ -270,7 +274,7 @@ public enum LargePakPatcher {
             compressedSize: size,
             uncompressedSize: size,
             localHeaderOffset: offset,
-            centralExtra: Data(),
+            centralExtra: addition.centralExtraField,
             centralComment: Data(),
             diskNumberStart: 0,
             internalAttributes: 0,

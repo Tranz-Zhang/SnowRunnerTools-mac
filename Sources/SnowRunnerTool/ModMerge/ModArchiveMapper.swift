@@ -13,19 +13,25 @@ public struct ModMappedEntry: Equatable {
     public let internalName: String
     public let targetArchive: ModMergeTargetArchive
     public let data: Data
+    public let localExtraField: Data
+    public let centralExtraField: Data
 
     public init(
         archiveURL: URL,
         originalName: String,
         internalName: String,
         targetArchive: ModMergeTargetArchive = .initial,
-        data: Data
+        data: Data,
+        localExtraField: Data = Data(),
+        centralExtraField: Data = Data()
     ) {
         self.archiveURL = archiveURL
         self.originalName = originalName
         self.internalName = internalName
         self.targetArchive = targetArchive
         self.data = data
+        self.localExtraField = localExtraField
+        self.centralExtraField = centralExtraField
     }
 }
 
@@ -50,7 +56,9 @@ public enum ModArchiveMapper {
                     originalName: entry.name,
                     internalName: destination.internalName,
                     targetArchive: destination.targetArchive,
-                    data: destination.data
+                    data: destination.data,
+                    localExtraField: destination.preserveZipExtraFields ? entry.localExtraField : Data(),
+                    centralExtraField: destination.preserveZipExtraFields ? entry.centralExtraField : Data()
                 ))
             }
         }
@@ -117,7 +125,7 @@ public enum ModArchiveMapper {
         role: Role,
         archiveURL: URL,
         payload: Data
-    ) throws -> [(internalName: String, targetArchive: ModMergeTargetArchive, data: Data)] {
+    ) throws -> [(internalName: String, targetArchive: ModMergeTargetArchive, data: Data, preserveZipExtraFields: Bool)] {
         let path = normalizedPackagePath(name)
         let archiveName = archiveURL.lastPathComponent
 
@@ -140,22 +148,22 @@ public enum ModArchiveMapper {
                 )
             }
             return [
-                (pctName, .sharedTextures, payload),
-                (pctName + "_header", .sharedTextures, headerData)
+                (pctName, .sharedTextures, payload, true),
+                (pctName + "_header", .sharedTextures, headerData, false)
             ]
 
         case .mainMod:
             if let rest = consumePrefix("classes/", from: path), !rest.isEmpty {
-                return [("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload)]
+                return [("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false)]
             }
             if let rest = consumePrefix("prebuild/meshes/", from: path), !rest.isEmpty {
-                return [("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload)]
+                return [("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false)]
             }
             if let rest = consumePrefix("ui/textures/", from: path), !rest.isEmpty {
-                return [("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTexturesBase, payload)]
+                return [("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTexturesBase, payload, false)]
             }
             if let rest = consumePrefix("texts/", from: path), !rest.isEmpty, rest.hasSuffix(".str") {
-                return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload)]
+                return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false)]
             }
             throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
         }

@@ -135,12 +135,16 @@ public enum PakWriter {
 
         for source in fileSources {
             let nameBytes = try checkedNameBytes(source.internalName)
+            let localExtraField = try checkedExtraFieldBytes("local extra field", source.localExtraField)
+            let centralExtraField = try checkedExtraFieldBytes("central extra field", source.centralExtraField)
             let uncompressed = try source.readData()
             let method = compressionMethod(for: source.internalName)
             let payload = method == .stored ? uncompressed : try PakDeflater.deflateRaw(uncompressed)
             let record = WrittenEntry(
                 name: source.internalName,
                 nameBytes: nameBytes,
+                localExtraField: localExtraField,
+                centralExtraField: centralExtraField,
                 compressionMethod: method,
                 crc32: crc32(for: uncompressed),
                 compressedSize: try checkedUInt32("compressed size", UInt64(payload.count)),
@@ -194,6 +198,11 @@ public enum PakWriter {
         return UInt16(value)
     }
 
+    private static func checkedExtraFieldBytes(_ field: String, _ data: Data) throws -> [UInt8] {
+        _ = try checkedUInt16(field, data.count)
+        return Array(data)
+    }
+
     private static func checkedUInt32(_ field: String, _ value: UInt64) throws -> UInt32 {
         guard value <= UInt64(UInt32.max) else {
             throw PakWriterError.valueExceedsUInt32(field: field, value: value)
@@ -219,8 +228,9 @@ public enum PakWriter {
         writer.appendUInt32(record.compressedSize)
         writer.appendUInt32(record.uncompressedSize)
         writer.appendUInt16(UInt16(record.nameBytes.count))
-        writer.appendUInt16(0)
+        writer.appendUInt16(UInt16(record.localExtraField.count))
         writer.appendBytes(record.nameBytes)
+        writer.appendBytes(record.localExtraField)
     }
 
     private static func appendCentralDirectoryHeader(_ record: WrittenEntry, to writer: inout BinaryWriter) {
@@ -235,13 +245,14 @@ public enum PakWriter {
         writer.appendUInt32(record.compressedSize)
         writer.appendUInt32(record.uncompressedSize)
         writer.appendUInt16(UInt16(record.nameBytes.count))
-        writer.appendUInt16(0)
+        writer.appendUInt16(UInt16(record.centralExtraField.count))
         writer.appendUInt16(0)
         writer.appendUInt16(0)
         writer.appendUInt16(0)
         writer.appendUInt32(externalAttributes)
         writer.appendUInt32(record.localHeaderOffset)
         writer.appendBytes(record.nameBytes)
+        writer.appendBytes(record.centralExtraField)
     }
 
     private static func appendEndOfCentralDirectory(
@@ -264,6 +275,8 @@ public enum PakWriter {
 private struct WrittenEntry {
     let name: String
     let nameBytes: [UInt8]
+    let localExtraField: [UInt8]
+    let centralExtraField: [UInt8]
     let compressionMethod: ZipCompressionMethod
     let crc32: UInt32
     let compressedSize: UInt32

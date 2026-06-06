@@ -198,7 +198,8 @@ public enum PakReader {
             let externalAttributes = try reader.readUInt32()
             let localHeaderOffset = try reader.readUInt32()
             let name = try CP437.decode(try reader.readBytes(count: Int(nameLength)))
-            try reader.skip(Int(extraLength) + Int(commentLength))
+            let centralExtraField = try reader.readBytes(count: Int(extraLength))
+            try reader.skip(Int(commentLength))
 
             entries.append(PakEntry(
                 name: name,
@@ -215,6 +216,7 @@ public enum PakReader {
                 localExtraFieldLength: 0,
                 centralVersionMadeBy: versionMadeBy,
                 centralExtraFieldLength: extraLength,
+                centralExtraField: Data(centralExtraField),
                 centralFileCommentLength: commentLength,
                 centralExternalAttributes: externalAttributes
             ))
@@ -248,7 +250,7 @@ public enum PakReader {
             let nameLength = try reader.readUInt16()
             let extraLength = try reader.readUInt16()
             let name = try CP437.decode(try reader.readBytes(count: Int(nameLength)))
-            try reader.skip(Int(extraLength))
+            let localExtraField = try reader.readBytes(count: Int(extraLength))
             let dataOffset = reader.offset
             try reader.skip(Int(compressedSize))
 
@@ -265,6 +267,7 @@ public enum PakReader {
                 localHeaderOffset: UInt32(headerOffset),
                 dataOffset: dataOffset,
                 localExtraFieldLength: extraLength,
+                localExtraField: Data(localExtraField),
                 centralVersionMadeBy: nil,
                 centralExtraFieldLength: nil,
                 centralFileCommentLength: nil,
@@ -308,8 +311,10 @@ public enum PakReader {
                 localHeaderOffset: central.localHeaderOffset,
                 dataOffset: local.dataOffset,
                 localExtraFieldLength: local.localExtraFieldLength,
+                localExtraField: local.localExtraField,
                 centralVersionMadeBy: central.centralVersionMadeBy,
                 centralExtraFieldLength: central.centralExtraFieldLength,
+                centralExtraField: central.centralExtraField,
                 centralFileCommentLength: central.centralFileCommentLength,
                 centralExternalAttributes: central.centralExternalAttributes
             )

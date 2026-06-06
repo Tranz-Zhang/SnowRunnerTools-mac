@@ -13,8 +13,10 @@ public struct PakEntry: Equatable {
     public let localHeaderOffset: UInt32
     public let dataOffset: Int
     public let localExtraFieldLength: UInt16
+    public let localExtraField: Data
     public let centralVersionMadeBy: UInt16?
     public let centralExtraFieldLength: UInt16?
+    public let centralExtraField: Data
     public let centralFileCommentLength: UInt16?
     public let centralExternalAttributes: UInt32?
 
@@ -31,8 +33,10 @@ public struct PakEntry: Equatable {
         localHeaderOffset: UInt32,
         dataOffset: Int,
         localExtraFieldLength: UInt16,
+        localExtraField: Data = Data(),
         centralVersionMadeBy: UInt16?,
         centralExtraFieldLength: UInt16?,
+        centralExtraField: Data = Data(),
         centralFileCommentLength: UInt16?,
         centralExternalAttributes: UInt32?
     ) {
@@ -48,8 +52,10 @@ public struct PakEntry: Equatable {
         self.localHeaderOffset = localHeaderOffset
         self.dataOffset = dataOffset
         self.localExtraFieldLength = localExtraFieldLength
+        self.localExtraField = localExtraField
         self.centralVersionMadeBy = centralVersionMadeBy
         self.centralExtraFieldLength = centralExtraFieldLength
+        self.centralExtraField = centralExtraField
         self.centralFileCommentLength = centralFileCommentLength
         self.centralExternalAttributes = centralExternalAttributes
     }

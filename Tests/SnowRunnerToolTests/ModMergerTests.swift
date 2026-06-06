@@ -326,6 +326,47 @@ final class ModMergerTests: XCTestCase {
         })
     }
 
+    func testExperimentalInlineTexturesPreservesTextureZipExtraField() throws {
+        let base = try makeSyntheticInitialPak()
+        let output = try temporaryDirectory(named: "merge-output")
+            .appendingPathComponent("initial.merged.pak")
+        let pc = try temporaryDirectory(named: "texture-pak")
+            .appendingPathComponent("pc.pak")
+        let textureExtraField = Data([0x02, 0xF0, 0x04, 0x00, 1, 2, 3, 4])
+        try PakWriter.writeArchive(
+            fileSources: [
+                PakFileSource(
+                    internalName: "prebuild/textures/pct/new_texture.pct",
+                    data: makeSyntheticPCT(tableCount: 12),
+                    centralExtraField: textureExtraField
+                )
+            ],
+            to: pc
+        )
+
+        _ = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: [pc],
+            options: ModMergeOptions(
+                allowOverwrite: true,
+                experimentalInlineTextures: true
+            )
+        )
+
+        let archive = try PakReader.readArchive(at: output)
+        let textureEntry = try XCTUnwrap(archive.entries.first {
+            $0.name == "[textures]\\pct\\new_texture.pct"
+        })
+        let headerEntry = try XCTUnwrap(archive.entries.first {
+            $0.name == "[textures]\\pct\\new_texture.pct_header"
+        })
+        XCTAssertEqual(textureEntry.localExtraField, Data())
+        XCTAssertEqual(textureEntry.centralExtraField, textureExtraField)
+        XCTAssertEqual(headerEntry.localExtraField, Data())
+        XCTAssertEqual(headerEntry.centralExtraField, Data())
+    }
+
     func testMergerMergesStringCollisionWithoutAllowOverwrite() throws {
         let base = try makeSyntheticInitialPak()
         let mod = try makePak(named: "text-mod.pak", entries: [

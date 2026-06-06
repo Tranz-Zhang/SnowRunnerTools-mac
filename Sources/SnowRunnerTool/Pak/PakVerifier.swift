@@ -139,8 +139,9 @@ public enum PakVerifier {
             if entry.dosTime != expectedDosTime || entry.dosDate != expectedDosDate {
                 issues.append(issue("invalid-timestamp", "\(entry.name) does not use 1980-01-01 03:00:00"))
             }
-            if entry.localExtraFieldLength != 0 || entry.centralExtraFieldLength != 0 {
-                issues.append(issue("extra-field", "\(entry.name) has an extra field"))
+            if entry.localExtraFieldLength != 0
+                || ((entry.centralExtraFieldLength ?? 0) != 0 && !allowsCentralTextureExtraField(entry)) {
+                issues.append(issue("extra-field", "\(entry.name) has an unsupported extra field"))
             }
             if entry.versionNeeded != expectedVersionNeeded {
                 issues.append(issue("version-needed", "\(entry.name) version needed is \(entry.versionNeeded)"))
@@ -173,6 +174,12 @@ public enum PakVerifier {
             && central.versionNeeded == local.versionNeeded
             && central.dosTime == local.dosTime
             && central.dosDate == local.dosDate
+    }
+
+    private static func allowsCentralTextureExtraField(_ entry: PakEntry) -> Bool {
+        entry.localExtraFieldLength == 0
+            && entry.name.hasPrefix("[textures]\\pct\\")
+            && entry.name.hasSuffix(".pct")
     }
 
     private static func cacheBlockContainsExternalPrefix(_ prefix: String, in archive: PakArchive) -> Bool {
