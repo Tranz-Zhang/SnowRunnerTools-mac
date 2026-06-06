@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import zlib
 @testable import SnowRunnerTool
 
 final class LargePakPatcherTests: XCTestCase {
@@ -35,7 +36,18 @@ final class LargePakPatcherTests: XCTestCase {
         ])
         let output = try temporaryDirectory(named: "large-pak-patcher")
             .appendingPathComponent("shared_textures.merged.pak")
+        let uncompressed = Data([4, 5, 6])
+        let compressed = rawStoredDeflateBlock(for: uncompressed)
+        let crc = uncompressed.withUnsafeBytes { buffer in
+            UInt32(zlib.crc32(0, buffer.bindMemory(to: Bytef.self).baseAddress, uInt(uncompressed.count)))
+        }
         let textureExtraField = Data([0x02, 0xF0, 0x04, 0x00, 1, 2, 3, 4])
+        let compressedPayload = PakCompressedPayload(
+            compressionMethod: .deflated,
+            data: compressed,
+            crc32: crc,
+            uncompressedSize: UInt32(uncompressed.count)
+        )
 
         _ = try LargePakPatcher.patchArchive(
             input: base,
@@ -43,8 +55,9 @@ final class LargePakPatcherTests: XCTestCase {
             additions: [
                 LargePakPatchEntry(
                     name: "[textures]\\pct\\new.pct",
-                    data: Data([4, 5, 6]),
-                    centralExtraField: textureExtraField
+                    data: uncompressed,
+                    centralExtraField: textureExtraField,
+                    compressedPayload: compressedPayload
                 )
             ],
             allowOverwrite: false
@@ -54,6 +67,9 @@ final class LargePakPatcherTests: XCTestCase {
         let entry = try XCTUnwrap(archive.entries.first { $0.name == "[textures]\\pct\\new.pct" })
         XCTAssertEqual(entry.localExtraField, Data())
         XCTAssertEqual(entry.centralExtraField, textureExtraField)
+        XCTAssertEqual(entry.compressionMethod, .deflated)
+        XCTAssertEqual(entry.compressedSize, UInt32(compressed.count))
+        XCTAssertEqual(try PakReader.readUncompressedPayload(entry: entry, in: archive), uncompressed)
     }
 
     func testPatcherRejectsCollisionWithoutOverwrite() throws {
@@ -94,6 +110,19 @@ final class LargePakPatcherTests: XCTestCase {
         XCTAssertTrue(bytes.containsLittleEndianUInt32(ZipSignature.zip64EndOfCentralDirectory))
         XCTAssertTrue(bytes.containsLittleEndianUInt32(ZipSignature.zip64Locator))
     }
+}
+
+private func rawStoredDeflateBlock(for data: Data) -> Data {
+    precondition(data.count <= Int(UInt16.max))
+    let length = UInt16(data.count)
+    let inverseLength = ~length
+    var result = Data([0x01])
+    result.append(UInt8(length & 0x00FF))
+    result.append(UInt8((length >> 8) & 0x00FF))
+    result.append(UInt8(inverseLength & 0x00FF))
+    result.append(UInt8((inverseLength >> 8) & 0x00FF))
+    result.append(data)
+    return result
 }
 
 private extension Data {

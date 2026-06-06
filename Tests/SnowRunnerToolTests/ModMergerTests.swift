@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import zlib
 @testable import SnowRunnerTool
 
 final class ModMergerTests: XCTestCase {
@@ -326,28 +327,21 @@ final class ModMergerTests: XCTestCase {
         })
     }
 
-    func testExperimentalInlineTexturesPreservesTextureZipExtraField() throws {
+    func testExperimentalInlineTexturesPreservesTextureZipExtraFieldAndCompressedPayload() throws {
         let base = try makeSyntheticInitialPak()
         let output = try temporaryDirectory(named: "merge-output")
             .appendingPathComponent("initial.merged.pak")
-        let pc = try temporaryDirectory(named: "texture-pak")
-            .appendingPathComponent("pc.pak")
         let textureExtraField = Data([0x02, 0xF0, 0x04, 0x00, 1, 2, 3, 4])
-        try PakWriter.writeArchive(
-            fileSources: [
-                PakFileSource(
-                    internalName: "prebuild/textures/pct/new_texture.pct",
-                    data: makeSyntheticPCT(tableCount: 12),
-                    centralExtraField: textureExtraField
-                )
-            ],
-            to: pc
+        let sourceTexture = try makeTexturePakWithRawDeflatedEntry(
+            internalName: "prebuild/textures/pct/new_texture.pct",
+            data: makeSyntheticPCT(tableCount: 12),
+            centralExtraField: textureExtraField
         )
 
         _ = try ModMerger.merge(
             baseInitialPak: base,
             outputInitialPak: output,
-            modPaks: [pc],
+            modPaks: [sourceTexture.url],
             options: ModMergeOptions(
                 allowOverwrite: true,
                 experimentalInlineTextures: true
@@ -363,6 +357,7 @@ final class ModMergerTests: XCTestCase {
         })
         XCTAssertEqual(textureEntry.localExtraField, Data())
         XCTAssertEqual(textureEntry.centralExtraField, textureExtraField)
+        XCTAssertEqual(textureEntry.compressedSize, sourceTexture.compressedSize)
         XCTAssertEqual(headerEntry.localExtraField, Data())
         XCTAssertEqual(headerEntry.centralExtraField, Data())
     }
@@ -534,4 +529,80 @@ final class ModMergerTests: XCTestCase {
 
         XCTAssertTrue(report.contains("texture load-list records: 2"))
     }
+}
+
+private func makeTexturePakWithRawDeflatedEntry(
+    internalName: String,
+    data: Data,
+    centralExtraField: Data
+) throws -> (url: URL, compressedSize: UInt32) {
+    let output = try temporaryDirectory(named: "raw-texture-pak")
+        .appendingPathComponent("pc.pak")
+    let nameBytes = try CP437.encode(internalName)
+    let compressed = rawStoredDeflateBlock(for: data)
+    let crc = data.withUnsafeBytes { buffer in
+        UInt32(zlib.crc32(0, buffer.bindMemory(to: Bytef.self).baseAddress, uInt(data.count)))
+    }
+
+    var writer = BinaryWriter()
+    writer.appendUInt32(ZipSignature.localFileHeader)
+    writer.appendUInt16(0x0014)
+    writer.appendUInt16(0)
+    writer.appendUInt16(ZipCompressionMethod.deflated.rawValue)
+    writer.appendUInt16(0x1800)
+    writer.appendUInt16(0x0021)
+    writer.appendUInt32(crc)
+    writer.appendUInt32(UInt32(compressed.count))
+    writer.appendUInt32(UInt32(data.count))
+    writer.appendUInt16(UInt16(nameBytes.count))
+    writer.appendUInt16(0)
+    writer.appendBytes(nameBytes)
+    writer.appendData(compressed)
+
+    let centralDirectoryOffset = UInt32(writer.data.count)
+    writer.appendUInt32(ZipSignature.centralDirectoryHeader)
+    writer.appendUInt16(0x0314)
+    writer.appendUInt16(0x0014)
+    writer.appendUInt16(0)
+    writer.appendUInt16(ZipCompressionMethod.deflated.rawValue)
+    writer.appendUInt16(0x1800)
+    writer.appendUInt16(0x0021)
+    writer.appendUInt32(crc)
+    writer.appendUInt32(UInt32(compressed.count))
+    writer.appendUInt32(UInt32(data.count))
+    writer.appendUInt16(UInt16(nameBytes.count))
+    writer.appendUInt16(UInt16(centralExtraField.count))
+    writer.appendUInt16(0)
+    writer.appendUInt16(0)
+    writer.appendUInt16(0)
+    writer.appendUInt32(0x81B60000)
+    writer.appendUInt32(0)
+    writer.appendBytes(nameBytes)
+    writer.appendData(centralExtraField)
+
+    let centralDirectorySize = UInt32(writer.data.count) - centralDirectoryOffset
+    writer.appendUInt32(ZipSignature.endOfCentralDirectory)
+    writer.appendUInt16(0)
+    writer.appendUInt16(0)
+    writer.appendUInt16(1)
+    writer.appendUInt16(1)
+    writer.appendUInt32(centralDirectorySize)
+    writer.appendUInt32(centralDirectoryOffset)
+    writer.appendUInt16(0)
+
+    try writer.data.write(to: output)
+    return (output, UInt32(compressed.count))
+}
+
+private func rawStoredDeflateBlock(for data: Data) -> Data {
+    precondition(data.count <= Int(UInt16.max))
+    let length = UInt16(data.count)
+    let inverseLength = ~length
+    var result = Data([0x01])
+    result.append(UInt8(length & 0x00FF))
+    result.append(UInt8((length >> 8) & 0x00FF))
+    result.append(UInt8(inverseLength & 0x00FF))
+    result.append(UInt8((inverseLength >> 8) & 0x00FF))
+    result.append(data)
+    return result
 }

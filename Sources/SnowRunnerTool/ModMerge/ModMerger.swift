@@ -172,12 +172,7 @@ public enum ModMerger {
         } else if let experimentalModTexturesOutputURL, !experimentalTextureEntries.isEmpty {
             let textureSources = try PakDirectoryScanner.sortedPackSources(
                 experimentalTextureEntries.map {
-                    PakFileSource(
-                        internalName: $0.internalName,
-                        data: $0.data,
-                        localExtraField: $0.localExtraField,
-                        centralExtraField: $0.centralExtraField
-                    )
+                    pakFileSource(for: $0)
                 },
                 requirePakLoadList: false
             )
@@ -195,7 +190,8 @@ public enum ModMerger {
                 LargePakPatchEntry(
                     name: $0.internalName,
                     data: $0.data,
-                    centralExtraField: $0.centralExtraField
+                    centralExtraField: $0.centralExtraField,
+                    compressedPayload: $0.compressedPayload
                 )
             }
             writtenSharedTexture = try LargePakPatcher.patchArchive(
@@ -328,7 +324,8 @@ public enum ModMerger {
                 targetArchive: .sharedTextures,
                 data: $0.data,
                 localExtraField: $0.localExtraField,
-                centralExtraField: $0.centralExtraField
+                centralExtraField: $0.centralExtraField,
+                compressedPayload: $0.compressedPayload
             )
         }
         return try resolveMappedDuplicates(retargeted).entries
@@ -358,12 +355,7 @@ public enum ModMerger {
                 continue
             }
             if let mapped = mappedByName[entry.name] {
-                sources.append(PakFileSource(
-                    internalName: entry.name,
-                    data: mapped.data,
-                    localExtraField: mapped.localExtraField,
-                    centralExtraField: mapped.centralExtraField
-                ))
+                sources.append(pakFileSource(for: mapped))
                 continue
             }
             let payload = try PakReader.readUncompressedPayload(entry: entry, in: baseArchive)
@@ -381,18 +373,31 @@ public enum ModMerger {
 
         let baseNames = Set(baseArchive.entries.map(\.name))
         for mapped in mappedEntries where !baseNames.contains(mapped.internalName) {
-            sources.append(PakFileSource(
-                internalName: mapped.internalName,
-                data: mapped.data,
-                localExtraField: mapped.localExtraField,
-                centralExtraField: mapped.centralExtraField
-            ))
+            sources.append(pakFileSource(for: mapped))
         }
         for stringMerge in stringMergeEntries where !baseNames.contains(stringMerge.internalName) {
             sources.append(PakFileSource(internalName: stringMerge.internalName, data: stringMerge.data))
         }
 
         return try PakDirectoryScanner.sortedPackSources(sources, requirePakLoadList: requirePakLoadList)
+    }
+
+    private static func pakFileSource(for entry: ModMappedEntry) -> PakFileSource {
+        if let compressedPayload = entry.compressedPayload {
+            return PakFileSource(
+                internalName: entry.internalName,
+                compressedPayload: compressedPayload,
+                localExtraField: entry.localExtraField,
+                centralExtraField: entry.centralExtraField
+            )
+        }
+
+        return PakFileSource(
+            internalName: entry.internalName,
+            data: entry.data,
+            localExtraField: entry.localExtraField,
+            centralExtraField: entry.centralExtraField
+        )
     }
 
     private static func writeReportIfNeeded(_ result: ModMergeResult, to url: URL?) throws {

@@ -25,6 +25,18 @@ public struct PakFileSource: Equatable {
         self.centralExtraField = centralExtraField
     }
 
+    public init(
+        internalName: String,
+        compressedPayload: PakCompressedPayload,
+        localExtraField: Data = Data(),
+        centralExtraField: Data = Data()
+    ) {
+        self.internalName = internalName
+        self.payload = .compressed(compressedPayload)
+        self.localExtraField = localExtraField
+        self.centralExtraField = centralExtraField
+    }
+
     public var fileURL: URL? {
         guard case let .fileURL(url) = payload else { return nil }
         return url
@@ -36,6 +48,13 @@ public struct PakFileSource: Equatable {
             return try Data(contentsOf: url)
         case let .data(data):
             return data
+        case let .compressed(payload):
+            switch payload.compressionMethod {
+            case .stored:
+                return payload.data
+            case .deflated:
+                return try PakInflater.inflateRawDeflate(payload.data, expectedSize: payload.uncompressedSize)
+            }
         }
     }
 }
@@ -43,6 +62,26 @@ public struct PakFileSource: Equatable {
 public enum PakSourcePayload: Equatable {
     case fileURL(URL)
     case data(Data)
+    case compressed(PakCompressedPayload)
+}
+
+public struct PakCompressedPayload: Equatable {
+    public let compressionMethod: ZipCompressionMethod
+    public let data: Data
+    public let crc32: UInt32
+    public let uncompressedSize: UInt32
+
+    public init(
+        compressionMethod: ZipCompressionMethod,
+        data: Data,
+        crc32: UInt32,
+        uncompressedSize: UInt32
+    ) {
+        self.compressionMethod = compressionMethod
+        self.data = data
+        self.crc32 = crc32
+        self.uncompressedSize = uncompressedSize
+    }
 }
 
 public struct PakSortKey: Equatable {

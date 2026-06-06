@@ -15,6 +15,7 @@ public struct ModMappedEntry: Equatable {
     public let data: Data
     public let localExtraField: Data
     public let centralExtraField: Data
+    public let compressedPayload: PakCompressedPayload?
 
     public init(
         archiveURL: URL,
@@ -23,7 +24,8 @@ public struct ModMappedEntry: Equatable {
         targetArchive: ModMergeTargetArchive = .initial,
         data: Data,
         localExtraField: Data = Data(),
-        centralExtraField: Data = Data()
+        centralExtraField: Data = Data(),
+        compressedPayload: PakCompressedPayload? = nil
     ) {
         self.archiveURL = archiveURL
         self.originalName = originalName
@@ -32,6 +34,7 @@ public struct ModMappedEntry: Equatable {
         self.data = data
         self.localExtraField = localExtraField
         self.centralExtraField = centralExtraField
+        self.compressedPayload = compressedPayload
     }
 }
 
@@ -49,6 +52,12 @@ public enum ModArchiveMapper {
                 continue
             }
             let payload = try PakReader.readUncompressedPayload(entry: entry, in: archive)
+            let compressedPayload = PakCompressedPayload(
+                compressionMethod: entry.compressionMethod,
+                data: try PakReader.readCompressedPayload(entry: entry, in: archive),
+                crc32: entry.crc32,
+                uncompressedSize: entry.uncompressedSize
+            )
             let destinations = try map(entry.name, role: role, archiveURL: url, payload: payload)
             for destination in destinations {
                 mapped.append(ModMappedEntry(
@@ -58,7 +67,8 @@ public enum ModArchiveMapper {
                     targetArchive: destination.targetArchive,
                     data: destination.data,
                     localExtraField: destination.preserveZipExtraFields ? entry.localExtraField : Data(),
-                    centralExtraField: destination.preserveZipExtraFields ? entry.centralExtraField : Data()
+                    centralExtraField: destination.preserveZipExtraFields ? entry.centralExtraField : Data(),
+                    compressedPayload: destination.preserveCompressedPayload ? compressedPayload : nil
                 ))
             }
         }
@@ -125,7 +135,13 @@ public enum ModArchiveMapper {
         role: Role,
         archiveURL: URL,
         payload: Data
-    ) throws -> [(internalName: String, targetArchive: ModMergeTargetArchive, data: Data, preserveZipExtraFields: Bool)] {
+    ) throws -> [(
+        internalName: String,
+        targetArchive: ModMergeTargetArchive,
+        data: Data,
+        preserveZipExtraFields: Bool,
+        preserveCompressedPayload: Bool
+    )] {
         let path = normalizedPackagePath(name)
         let archiveName = archiveURL.lastPathComponent
 
@@ -148,22 +164,22 @@ public enum ModArchiveMapper {
                 )
             }
             return [
-                (pctName, .sharedTextures, payload, true),
-                (pctName + "_header", .sharedTextures, headerData, false)
+                (pctName, .sharedTextures, payload, true, true),
+                (pctName + "_header", .sharedTextures, headerData, false, false)
             ]
 
         case .mainMod:
             if let rest = consumePrefix("classes/", from: path), !rest.isEmpty {
-                return [("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false)]
+                return [("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
             }
             if let rest = consumePrefix("prebuild/meshes/", from: path), !rest.isEmpty {
-                return [("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false)]
+                return [("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
             }
             if let rest = consumePrefix("ui/textures/", from: path), !rest.isEmpty {
-                return [("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTexturesBase, payload, false)]
+                return [("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTexturesBase, payload, false, false)]
             }
             if let rest = consumePrefix("texts/", from: path), !rest.isEmpty, rest.hasSuffix(".str") {
-                return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false)]
+                return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
             }
             throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
         }

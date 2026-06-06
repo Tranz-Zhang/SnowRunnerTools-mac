@@ -137,23 +137,21 @@ public enum PakWriter {
             let nameBytes = try checkedNameBytes(source.internalName)
             let localExtraField = try checkedExtraFieldBytes("local extra field", source.localExtraField)
             let centralExtraField = try checkedExtraFieldBytes("central extra field", source.centralExtraField)
-            let uncompressed = try source.readData()
-            let method = compressionMethod(for: source.internalName)
-            let payload = method == .stored ? uncompressed : try PakDeflater.deflateRaw(uncompressed)
+            let sourcePayload = try payload(for: source)
             let record = WrittenEntry(
                 name: source.internalName,
                 nameBytes: nameBytes,
                 localExtraField: localExtraField,
                 centralExtraField: centralExtraField,
-                compressionMethod: method,
-                crc32: crc32(for: uncompressed),
-                compressedSize: try checkedUInt32("compressed size", UInt64(payload.count)),
-                uncompressedSize: try checkedUInt32("uncompressed size", UInt64(uncompressed.count)),
+                compressionMethod: sourcePayload.compressionMethod,
+                crc32: sourcePayload.crc32,
+                compressedSize: try checkedUInt32("compressed size", UInt64(sourcePayload.data.count)),
+                uncompressedSize: sourcePayload.uncompressedSize,
                 localHeaderOffset: try checkedUInt32("local header offset", UInt64(writer.data.count))
             )
 
             appendLocalHeader(record, to: &writer)
-            writer.appendData(payload)
+            writer.appendData(sourcePayload.data)
             records.append(record)
         }
 
@@ -183,6 +181,22 @@ public enum PakWriter {
 
     private static func compressionMethod(for internalName: String) -> ZipCompressionMethod {
         internalName == "pak.load_list" ? .stored : .deflated
+    }
+
+    private static func payload(for source: PakFileSource) throws -> PakCompressedPayload {
+        if case let .compressed(payload) = source.payload {
+            return payload
+        }
+
+        let uncompressed = try source.readData()
+        let method = compressionMethod(for: source.internalName)
+        let data = method == .stored ? uncompressed : try PakDeflater.deflateRaw(uncompressed)
+        return PakCompressedPayload(
+            compressionMethod: method,
+            data: data,
+            crc32: crc32(for: uncompressed),
+            uncompressedSize: try checkedUInt32("uncompressed size", UInt64(uncompressed.count))
+        )
     }
 
     private static func checkedNameBytes(_ name: String) throws -> [UInt8] {

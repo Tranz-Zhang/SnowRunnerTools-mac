@@ -64,6 +64,10 @@ public enum PakReader {
         }
     }
 
+    public static func readCompressedPayload(entry: PakEntry, in archive: PakArchive) throws -> Data {
+        try compressedPayload(entry: entry, in: archive)
+    }
+
     public static func validatePayloadCRCs(in archive: PakArchive) throws {
         for entry in archive.entries {
             let payload = try readUncompressedPayload(entry: entry, in: archive)

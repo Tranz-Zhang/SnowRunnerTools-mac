@@ -5,11 +5,18 @@ public struct LargePakPatchEntry: Equatable {
     public let name: String
     public let data: Data
     public let centralExtraField: Data
+    public let compressedPayload: PakCompressedPayload?
 
-    public init(name: String, data: Data, centralExtraField: Data = Data()) {
+    public init(
+        name: String,
+        data: Data,
+        centralExtraField: Data = Data(),
+        compressedPayload: PakCompressedPayload? = nil
+    ) {
         self.name = name
         self.data = data
         self.centralExtraField = centralExtraField
+        self.compressedPayload = compressedPayload
     }
 }
 
@@ -198,7 +205,8 @@ public enum LargePakPatcher {
         for addition in additions {
             if let existing = byName[addition.name] {
                 guard existing.data == addition.data,
-                      existing.centralExtraField == addition.centralExtraField
+                      existing.centralExtraField == addition.centralExtraField,
+                      existing.compressedPayload == addition.compressedPayload
                 else {
                     throw LargePakPatcherError.conflictingAddition(addition.name)
                 }
@@ -241,25 +249,47 @@ public enum LargePakPatcher {
             throw LargePakPatcherError.valueExceedsUInt32(field: "entry size", value: UInt64(addition.data.count))
         }
 
-        let crc = addition.data.withUnsafeBytes { buffer in
-            UInt32(zlib.crc32(0, buffer.bindMemory(to: Bytef.self).baseAddress, uInt(addition.data.count)))
+        let crc: UInt32
+        let compressedData: Data
+        let compressedSize: UInt64
+        let uncompressedSize: UInt64
+        let compressionMethod: ZipCompressionMethod
+        if let payload = addition.compressedPayload {
+            crc = payload.crc32
+            compressedData = payload.data
+            compressedSize = UInt64(payload.data.count)
+            uncompressedSize = UInt64(payload.uncompressedSize)
+            compressionMethod = payload.compressionMethod
+        } else {
+            crc = addition.data.withUnsafeBytes { buffer in
+                UInt32(zlib.crc32(0, buffer.bindMemory(to: Bytef.self).baseAddress, uInt(addition.data.count)))
+            }
+            compressedData = addition.data
+            compressedSize = UInt64(addition.data.count)
+            uncompressedSize = UInt64(addition.data.count)
+            compressionMethod = .stored
         }
-        let size = UInt64(addition.data.count)
+        guard compressedSize <= uint32Max else {
+            throw LargePakPatcherError.valueExceedsUInt32(field: "compressed size", value: compressedSize)
+        }
+        guard uncompressedSize <= uint32Max else {
+            throw LargePakPatcherError.valueExceedsUInt32(field: "uncompressed size", value: uncompressedSize)
+        }
         var local = BinaryWriter()
         local.appendUInt32(ZipSignature.localFileHeader)
         local.appendUInt16(0x0014)
         local.appendUInt16(0)
-        local.appendUInt16(ZipCompressionMethod.stored.rawValue)
+        local.appendUInt16(compressionMethod.rawValue)
         local.appendUInt16(0x1800)
         local.appendUInt16(0x0021)
         local.appendUInt32(crc)
-        local.appendUInt32(UInt32(size))
-        local.appendUInt32(UInt32(size))
+        local.appendUInt32(UInt32(compressedSize))
+        local.appendUInt32(UInt32(uncompressedSize))
         local.appendUInt16(UInt16(nameBytes.count))
         local.appendUInt16(0)
         local.appendBytes(nameBytes)
         try outputHandle.write(contentsOf: local.data)
-        try outputHandle.write(contentsOf: addition.data)
+        try outputHandle.write(contentsOf: compressedData)
 
         return LargePakCentralEntry(
             name: addition.name,
@@ -267,19 +297,19 @@ public enum LargePakPatcher {
             versionMadeBy: 0x0314,
             versionNeeded: 0x0014,
             generalPurposeBitFlag: 0,
-            compressionMethod: .stored,
+            compressionMethod: compressionMethod,
             dosTime: 0x1800,
             dosDate: 0x0021,
             crc32: crc,
-            compressedSize: size,
-            uncompressedSize: size,
+            compressedSize: compressedSize,
+            uncompressedSize: uncompressedSize,
             localHeaderOffset: offset,
             centralExtra: addition.centralExtraField,
             centralComment: Data(),
             diskNumberStart: 0,
             internalAttributes: 0,
             externalAttributes: 0x81B60000,
-            localRecordLength: UInt64(local.data.count) + size
+            localRecordLength: UInt64(local.data.count) + compressedSize
         )
     }
 
