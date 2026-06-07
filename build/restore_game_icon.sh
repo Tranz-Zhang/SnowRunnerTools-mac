@@ -2,14 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_INITIAL_PAK="${BASE_INITIAL_PAK:-$SCRIPT_DIR/build/input/initial.pak}"
+BASE_INITIAL_PAK="${BASE_INITIAL_PAK:-$SCRIPT_DIR/input/initial.pak}"
 
 usage() {
   cat <<'EOF'
-Usage: restore_game_icon.sh <mod.pak> [output.pak]
+Usage: restore_game_icon.sh [--file-name <truck.xml>] <mod.pak> [output.pak]
 
 Restores truck icon fields from the original truck XML in build/input/initial.pak
 and removes unsupported ui/textures/*.png entries from the mod PAK.
+
+Options:
+  --file-name <truck.xml>
+      Use this original truck XML filename under [media]\classes\trucks instead
+      of auto-detecting it from the mod's classes/trucks/*.xml filename.
 
 Environment:
   BASE_INITIAL_PAK  Override the original initial.pak path.
@@ -59,10 +64,47 @@ replace_attribute_if_present() {
   ' "$file"
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
+FILE_NAME_OVERRIDE=""
+args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --file-name)
+      [[ $# -ge 2 ]] || die "--file-name requires a truck XML filename"
+      [[ -z "$FILE_NAME_OVERRIDE" ]] || die "--file-name can only be provided once"
+      FILE_NAME_OVERRIDE="$2"
+      shift 2
+      ;;
+    --file-name=*)
+      [[ -z "$FILE_NAME_OVERRIDE" ]] || die "--file-name can only be provided once"
+      FILE_NAME_OVERRIDE="${1#--file-name=}"
+      [[ -n "$FILE_NAME_OVERRIDE" ]] || die "--file-name requires a truck XML filename"
+      shift
+      ;;
+    --)
+      shift
+      args+=("$@")
+      break
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -n "$FILE_NAME_OVERRIDE" ]]; then
+  [[ "$FILE_NAME_OVERRIDE" != */* && "$FILE_NAME_OVERRIDE" != *\\* ]] || die "--file-name expects a filename, not a path"
+  [[ "$FILE_NAME_OVERRIDE" == *.xml ]] || die "--file-name must end with .xml"
 fi
+
+set -- "${args[@]}"
 
 [[ $# -ge 1 && $# -le 2 ]] || {
   usage >&2
@@ -118,6 +160,9 @@ while IFS= read -r truck_xml; do
   truck_xmls+=("$truck_xml")
 done < <(find "$truck_dir" -maxdepth 1 -type f -name '*.xml' | sort)
 [[ "${#truck_xmls[@]}" -gt 0 ]] || die "mod PAK has ui textures but no classes/trucks/*.xml files"
+if [[ -n "$FILE_NAME_OVERRIDE" && "${#truck_xmls[@]}" -ne 1 ]]; then
+  die "--file-name can only be used when the mod PAK has exactly one classes/trucks/*.xml file"
+fi
 
 icon_attrs=(
   TruckImage
@@ -129,7 +174,11 @@ icon_attrs=(
 
 restored_count=0
 for mod_xml in "${truck_xmls[@]}"; do
-  file_name="$(basename "$mod_xml")"
+  if [[ -n "$FILE_NAME_OVERRIDE" ]]; then
+    file_name="$FILE_NAME_OVERRIDE"
+  else
+    file_name="$(basename "$mod_xml")"
+  fi
   original_internal="[media]\\classes\\trucks\\$file_name"
 
   if ! grep -Fqx "$original_internal" <<< "$base_entries"; then
