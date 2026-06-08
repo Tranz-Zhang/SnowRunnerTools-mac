@@ -7,6 +7,7 @@ The current implementation can:
 
 - Read and verify SnowRunner-style PAK archives.
 - Unpack and repack `initial.pak` with SnowPakTool-compatible layout.
+- Unpack and repack merge-compatible PC mod PAKs.
 - Unpack and rebuild `initial.cache_block`.
 - Inspect and rebuild `pak.load_list`.
 - Merge supported PC mod PAKs into an `initial.pak` candidate.
@@ -41,12 +42,23 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snow
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-snowpak-layout fixtures/initial.repacked.pak
 ```
 
-Unpack and repack a PAK:
+Unpack and repack `initial.pak`:
 
 ```bash
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack fixtures/initial.pak /tmp/snowrunner-initial
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak pack /tmp/snowrunner-initial /tmp/initial.repacked.pak
 ```
+
+Unpack and repack a supported PC mod PAK:
+
+```bash
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack-mod fixtures/loadstar_1700_jbe.pak /tmp/loadstar-mod
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak pack-mod /tmp/loadstar-mod /tmp/loadstar_1700_jbe.repacked.pak
+```
+
+`pak pack-mod` writes forward-slash mod paths such as `classes/...` and
+`prebuild/meshes/...`, does not require `pak.load_list`, and validates that the
+output can be consumed by `pak merge-mod`.
 
 Work with `initial.cache_block`:
 

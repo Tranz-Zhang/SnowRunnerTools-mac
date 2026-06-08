@@ -39,11 +39,25 @@ public struct ModMappedEntry: Equatable {
 }
 
 public enum ModArchiveMapper {
+    public static func validateMergeCompatiblePackagePaths(_ names: [String], archiveName: String) throws {
+        let normalizedNames = names
+            .filter { !isDirectoryEntry($0) }
+            .map(normalizedPackagePath)
+        let role = try role(forPackagePaths: normalizedNames, archiveName: archiveName)
+        for name in normalizedNames {
+            try validatePackagePath(name, role: role, archiveName: archiveName)
+        }
+    }
+
     public static func mapArchive(at url: URL) throws -> [ModMappedEntry] {
         let archive = try PakReader.readArchive(at: url)
         try validateModArchive(archive)
 
-        let role = try role(for: archive)
+        let archiveName = url.lastPathComponent
+        let role = try role(forPackagePaths: archive.entries
+            .map(\.name)
+            .filter { !isDirectoryEntry($0) }
+            .map(normalizedPackagePath), archiveName: archiveName)
         var mapped: [ModMappedEntry] = []
         mapped.reserveCapacity(archive.entries.count)
 
@@ -81,19 +95,14 @@ public enum ModArchiveMapper {
         case texture
     }
 
-    private static func role(for archive: PakArchive) throws -> Role {
-        let fileNames = archive.entries
-            .map(\.name)
-            .filter { !isDirectoryEntry($0) }
-            .map(normalizedPackagePath)
-
+    private static func role(forPackagePaths fileNames: [String], archiveName: String) throws -> Role {
         let texturePrefix = "prebuild/textures/"
         let textureNames = fileNames.filter { $0.hasPrefix(texturePrefix) }
         if !textureNames.isEmpty {
             guard textureNames.count == fileNames.count else {
                 let mixedPath = fileNames.first { !$0.hasPrefix(texturePrefix) } ?? textureNames[0]
                 throw ModMergeError.unsupportedModPath(
-                    archive: archive.url.lastPathComponent,
+                    archive: archiveName,
                     path: mixedPath
                 )
             }
@@ -182,6 +191,32 @@ public enum ModArchiveMapper {
                 return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
             }
             throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
+        }
+    }
+
+    private static func validatePackagePath(_ path: String, role: Role, archiveName: String) throws {
+        switch role {
+        case .texture:
+            guard let rest = consumePrefix("prebuild/textures/", from: path), !rest.isEmpty else {
+                throw ModMergeError.unsupportedModPath(archive: archiveName, path: path)
+            }
+            guard rest.hasSuffix(".pct") else {
+                throw ModMergeError.unsupportedModPath(archive: archiveName, path: path)
+            }
+        case .mainMod:
+            if let rest = consumePrefix("classes/", from: path), !rest.isEmpty {
+                return
+            }
+            if let rest = consumePrefix("prebuild/meshes/", from: path), !rest.isEmpty {
+                return
+            }
+            if let rest = consumePrefix("ui/textures/", from: path), !rest.isEmpty {
+                return
+            }
+            if let rest = consumePrefix("texts/", from: path), !rest.isEmpty, rest.hasSuffix(".str") {
+                return
+            }
+            throw ModMergeError.unsupportedModPath(archive: archiveName, path: path)
         }
     }
 

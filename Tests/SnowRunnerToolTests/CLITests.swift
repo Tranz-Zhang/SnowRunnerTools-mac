@@ -17,6 +17,51 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(result.stderr.contains("Unknown command"))
     }
 
+    func testPakUnpackModAndPackModCommands() throws {
+        let input = try makePak(named: "cli-main-mod.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8),
+            "prebuild/meshes/demo_mesh": Data([1, 2, 3])
+        ])
+        let unpacked = try temporaryDirectory(named: "cli-mod-unpack")
+        let output = unpacked.deletingLastPathComponent().appendingPathComponent("cli-mod-output.pak")
+
+        let unpackResult = CLI.run(arguments: ["pak", "unpack-mod", input.path, unpacked.path])
+        XCTAssertEqual(unpackResult.exitCode, 0)
+        XCTAssertTrue(unpackResult.stdout.contains("unpacked 2 mod entries"))
+
+        let packResult = CLI.run(arguments: ["pak", "pack-mod", unpacked.path, output.path])
+        XCTAssertEqual(packResult.exitCode, 0)
+        XCTAssertTrue(packResult.stdout.contains("packed 2 mod entries"))
+
+        let archive = try PakReader.readArchive(at: output)
+        XCTAssertEqual(archive.entries.map(\.name), [
+            "classes/trucks/demo.xml",
+            "prebuild/meshes/demo_mesh"
+        ])
+    }
+
+    func testPakUnpackStillRejectsForwardSlashModArchive() throws {
+        let input = try makePak(named: "cli-main-mod.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+        let unpacked = try temporaryDirectory(named: "cli-initial-unpack-mod-input")
+
+        let result = CLI.run(arguments: ["pak", "unpack", input.path, unpacked.path])
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertTrue(result.stderr.contains("Invalid internal PAK name"))
+    }
+
+    func testPakModCommandUsageErrors() {
+        let unpackResult = CLI.run(arguments: ["pak", "unpack-mod"])
+        XCTAssertEqual(unpackResult.exitCode, 2)
+        XCTAssertTrue(unpackResult.stderr.contains("Usage: snowrunner-tool pak unpack-mod <mod.pak> <dir>"))
+
+        let packResult = CLI.run(arguments: ["pak", "pack-mod"])
+        XCTAssertEqual(packResult.exitCode, 2)
+        XCTAssertTrue(packResult.stderr.contains("Usage: snowrunner-tool pak pack-mod <dir> <mod.pak>"))
+    }
+
     func testInspectCommandReportsEntryCounts() {
         let result = CLI.run(arguments: ["pak", "inspect", TestFixtures.initialPak.path])
 

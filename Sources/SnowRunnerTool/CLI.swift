@@ -39,7 +39,9 @@ public enum CLI {
           load-list create-initial <target.load_list> <initial.pak> <shared.pak> <shared_sound.pak>
           pak inspect <pak>
           pak unpack <pak> <dir>
+          pak unpack-mod <mod.pak> <dir>
           pak pack <dir> <pak>
+          pak pack-mod <dir> <mod.pak>
           pak pack --mixed-cache-block <dir> <pak>
           pak pack --rebuild-load-list [--mixed-cache-block] <dir> <pak> <shared.pak> <shared_sound.pak>
           pak merge-mod [--allow-overwrite] [--dry-run] [--report <path>] --input-initial <base-initial.pak> --output-initial <output-initial.pak> [--input-textures <shared_textures_base.pak> --output-textures <candidate-base-textures.pak>] [--input-shared-textures <shared_textures.pak> --output-shared-textures <candidate-shared_textures.pak>] --mods <mod.pak> [<mod.pak> ...]
@@ -158,8 +160,28 @@ public enum CLI {
                 )
                 return CLIResult(exitCode: 0, stdout: "unpacked \(count) entries\n", stderr: "")
 
+            case "unpack-mod":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak unpack-mod <mod.pak> <dir>\n")
+                }
+                let count = try PakModUnpacker.unpack(
+                    archiveURL: URL(fileURLWithPath: arguments[1]),
+                    toDirectory: URL(fileURLWithPath: arguments[2], isDirectory: true)
+                )
+                return CLIResult(exitCode: 0, stdout: "unpacked \(count) mod entries\n", stderr: "")
+
             case "pack":
                 return try runPakPackCommand(Array(arguments.dropFirst()))
+
+            case "pack-mod":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: "Usage: snowrunner-tool pak pack-mod <dir> <mod.pak>\n")
+                }
+                let count = try PakModWriter.writeArchive(
+                    fromDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true),
+                    to: URL(fileURLWithPath: arguments[2])
+                )
+                return CLIResult(exitCode: 0, stdout: "packed \(count) mod entries\n", stderr: "")
 
             case "merge-mod":
                 return try runPakMergeModCommand(Array(arguments.dropFirst()))
