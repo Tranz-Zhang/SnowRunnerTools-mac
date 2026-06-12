@@ -266,4 +266,84 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertTrue(outputArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct_header" })
         XCTAssertTrue(try PakVerifier.verifySnowPakLayout(outputArchive).isEmpty)
     }
+
+    func testWorkspaceInitCreatesManifestAndUnpacksInitial() throws {
+        let workspace = try temporaryDirectory(named: "workspace-init")
+
+        let result = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+        XCTAssertEqual(result.initialEntryCount, 10308)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.manifestURL(root: workspace).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.initialDirectory(root: workspace).appendingPathComponent("pak.load_list").path))
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.initialSourcePath, TestFixtures.initialPak.path)
+        XCTAssertEqual(manifest.mods, [])
+    }
+
+    func testWorkspaceInitRejectsExistingNonEmptyInitial() throws {
+        let workspace = try temporaryDirectory(named: "workspace-init-existing")
+        try writeFile(root: PakWorkspacePaths.initialDirectory(root: workspace), relativePath: "file.txt", data: Data("x".utf8))
+
+        XCTAssertThrowsError(try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)) { error in
+            XCTAssertTrue(String(describing: error).contains("initial directory already exists"))
+        }
+    }
+
+    func testWorkspaceInitAcceptsOriginalLayoutThatFailsSnowPakLayout() throws {
+        XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", TestFixtures.initialPak.path]).exitCode, 1)
+        let workspace = try temporaryDirectory(named: "workspace-init-original-layout")
+
+        let result = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+        XCTAssertEqual(result.initialEntryCount, 10308)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.manifestURL(root: workspace).path))
+    }
+
+    func testWorkspaceAddModsUnpacksCachesAndRecordsManifest() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-mod")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let mod = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+
+        let result = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+        XCTAssertEqual(result.addedMods.map(\.folderName), ["demo"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo").appendingPathComponent("classes/trucks/demo.xml").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo").path))
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.mods.count, 1)
+        XCTAssertEqual(manifest.mods[0].entries.count, 1)
+    }
+
+    func testWorkspaceAddModsRejectsDuplicateFolderName() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-duplicate")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let first = try makePak(named: "demo.pak", entries: ["classes/trucks/a.xml": Data("<Truck/>".utf8)])
+        let second = try makePak(named: "demo.pak", entries: ["classes/trucks/b.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first])
+
+        XCTAssertThrowsError(try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [second]))
+    }
+
+    func testWorkspaceAddModsRejectsInvalidModWithoutCommittingAnyMod() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-invalid-atomic")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let valid = try makePak(named: "valid.pak", entries: [
+            "classes/trucks/valid.xml": Data("<Truck/>".utf8)
+        ])
+        let invalid = try makePak(named: "invalid.pak", entries: [
+            "unknown/path.bin": Data([1, 2, 3])
+        ])
+
+        XCTAssertThrowsError(try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [valid, invalid]))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "valid").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "invalid").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "valid").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "invalid").path))
+        let workspaceNames = try FileManager.default.contentsOfDirectory(atPath: workspace.path)
+        XCTAssertFalse(workspaceNames.contains { $0.hasPrefix(".mod-") || $0.hasPrefix(".source-") })
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
+    }
 }
