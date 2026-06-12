@@ -7,3 +7,4 @@ fixtures/output
 build/**/*.pak
 build/output/
 build/reports/
+workspace
