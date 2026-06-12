@@ -25,16 +25,19 @@ In scope:
 - Source-preserving workspace layout:
   - `initial/` stores unpacked runtime `initial.pak` contents.
   - `mods/<name>/` stores unpacked mod package contents.
+  - `.snowrunner/sources/` stores cached source PAKs for metadata reuse.
   - `build/` stores generated outputs.
 - Workspace metadata in `.snowrunner-workspace.json`.
 - Automatic mod folder naming from each PAK basename without `.pak`.
 - Rejection of duplicate mod folder names.
-- `--verify` as a dry-run build.
+- `--verify` as a real temporary build plus verifier run.
 - `--build` producing one generated `build/initial.pak`.
 - `--build` using the same texture behavior as
   `pak merge-mod --experimental-inline-textures`.
 - Manual edits, additions, and deletions in `initial/` reflected in the
   generated `pak.load_list` when the path has a known loader rule.
+- Reuse of cached source PAK texture ZIP metadata for unchanged mod texture
+  files.
 - Mod-over-initial overwrites allowed by default.
 - Mod-over-mod mapped path conflicts rejected when bytes differ.
 - Generated build report at `build/workspace-build-report.md`.
@@ -98,6 +101,10 @@ workspace/
     [media]/
     [strings]/
     [ssl_cache]/
+  .snowrunner/
+    sources/
+      loadstar_1700_jbe.pak
+      loadstar_1700_jbe_pc.pak
   mods/
     loadstar_1700_jbe/
       classes/
@@ -117,6 +124,10 @@ paths.
 
 Each `mods/<name>/` folder uses the existing `pak unpack-mod` filesystem mapping
 for mod package paths.
+
+`.snowrunner/sources/` is tool-owned. It stores copies of the original mod PAKs
+added to the workspace so unchanged texture entries can reuse the same
+compressed payloads and ZIP extra fields that `pak merge-mod` preserves today.
 
 `build/` is generated. The tool may overwrite `build/initial.pak` and
 `build/workspace-build-report.md` on each successful build. The build pipeline
@@ -140,7 +151,15 @@ V1 shape:
     {
       "sourcePath": "/path/to/mod1.pak",
       "folderName": "mod1",
-      "archiveName": "mod1.pak"
+      "archiveName": "mod1.pak",
+      "sourceCachePath": ".snowrunner/sources/mod1.pak",
+      "entries": [
+        {
+          "sourceEntryName": "prebuild/textures/pct/foo.pct",
+          "workspacePath": "mods/mod1/prebuild/textures/pct/foo.pct",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ]
     }
   ],
   "policy": {
@@ -157,6 +176,39 @@ The `archiveName` is important because current mod mapping uses archive
 identity for diagnostics and role validation. Directory-backed mod mapping
 should behave as if the folder came from that archive name.
 
+The cached source PAK and per-entry hashes are used only to decide whether a
+workspace file is unchanged from the source archive. If unchanged, directory
+mapping may reuse preserved compressed payloads and ZIP metadata from the cached
+source PAK. If edited, the workspace file bytes win and the entry is recompressed
+normally.
+
+## Workspace Transaction Model
+
+Workspace mutations must be all-or-nothing.
+
+`--init` transaction rules:
+
+- Unpack the source PAK into a temporary sibling of `initial/`.
+- Write the new manifest to a temporary file.
+- Commit by moving the temporary initial folder into place and atomically
+  replacing `.snowrunner-workspace.json`.
+- If any step fails before commit, remove temporary files and leave the existing
+  workspace unchanged.
+
+`--add-mods` transaction rules:
+
+- Validate every input PAK and derived folder name before committing any one of
+  them.
+- Unpack each mod into a temporary folder.
+- Copy each source PAK into a temporary source-cache location.
+- Write the updated manifest to a temporary file.
+- Commit all new mod folders, source-cache files, and the manifest together.
+- If any mod in the invocation fails, remove temporary files and leave the
+  workspace unchanged.
+
+The implementation should prefer same-directory temporary paths so final moves
+can use filesystem atomic rename semantics where available.
+
 ## Command Semantics
 
 ### `--init`
@@ -168,7 +220,9 @@ Rules:
 - Unpack the source PAK into `initial/` using `PakUnpacker`.
 - Record `initialSourcePath`.
 - Reject an existing non-empty `initial/`.
-- Reject invalid source PAKs with existing reader/verifier errors.
+- Validate the source PAK with `verify-basic`.
+- Do not require `verify-snowpak-layout`; original game PAK layout may differ
+  from normalized writer output.
 
 The command should not remove or mutate existing mod folders.
 
@@ -183,8 +237,13 @@ Rules:
   - reject duplicate folder names already in the workspace or inside the same
     command invocation,
   - unpack with `PakModUnpacker` into `mods/<folderName>/`,
+  - copy the original PAK into `.snowrunner/sources/<folderName>.pak`,
+  - record source-entry hashes in the manifest,
   - append manifest metadata.
 - Preserve mod package paths on disk.
+- Apply all mod additions atomically. If any PAK in a multi-mod invocation
+  fails validation or unpacking, do not commit any new mod folder, source-cache
+  file, or manifest entry from that invocation.
 
 Example:
 
@@ -195,7 +254,7 @@ Example:
 
 ### `--verify`
 
-`--verify` is a dry-run build.
+`--verify` is a temporary build and verifier run.
 
 Rules:
 
@@ -211,8 +270,11 @@ Rules:
 - Allow mod-over-initial overwrites by default.
 - Reject conflicting mod-over-mod mapped paths when bytes differ.
 - Build the candidate load-list in memory.
+- Write a temporary candidate PAK outside `build/`.
+- Run `verify-basic` and `verify-snowpak-layout` on the temporary candidate.
+- Delete the temporary candidate after verification.
 - Print a merge summary.
-- Write nothing.
+- Do not write or modify `workspace/build/`.
 
 This command answers the real question: whether the current editable workspace
 can produce the final `initial.pak`.
@@ -258,7 +320,7 @@ Initial edit policy:
   preserved. This keeps references to shared archives such as `shared.pak` and
   `shared_sound.pak`.
 - Records whose `sourcePak` is `initial.pak` are rebuilt from the current
-  `initial/` directory using known classifier rules.
+  `initial/` directory by `WorkspaceInitialLoadListBuilder`.
 - Added `initial/` files that need load-list records must match a known loader
   rule, otherwise verify/build fails instead of producing a candidate with stale
   or missing metadata.
@@ -266,12 +328,30 @@ Initial edit policy:
   `pak.load_list`, `initial.cache_block`, `[strings]\*.str`, and
   `[ssl_cache]\initial_pak`, remain allowed without records.
 
+Workspace initial load-list builder contract:
+
+- Own the policy for rebuilding `sourcePak == "initial.pak"` records from
+  `initial/`.
+- Preserve non-`initial.pak` records from the unpacked `initial/pak.load_list`
+  unchanged.
+- Classify files physically present in the generated `initial.pak` with
+  `sourcePak == "initial.pak"`.
+- Classify added `[meshes]\...` files as `mesh_loader / initial.pak / MESH load`
+  because they are packed into the generated `initial.pak`, not into
+  `shared.pak`.
+- Reject paths that look load-listed but have no known workspace loader rule.
+
 Texture policy:
 
 - Texture mod entries are written into the generated `initial.pak`.
 - Generated PCT `.pct_header` entries are also written into `initial.pak`.
 - Mod-managed PCT load-list records source textures from `initial.pak`.
 - No sidecar texture PAK is produced in v1.
+- For unchanged mod PCT entries, reuse compressed payloads and supported ZIP
+  metadata from the cached source PAK when available.
+- For edited mod PCT entries, read the workspace file bytes, regenerate the
+  `.pct_header`, recompress normally, and report that the texture was
+  recompressed.
 
 String policy:
 
@@ -294,11 +374,16 @@ Do not duplicate merge rules.
 ```text
 PakWorkspaceManager
   owns workspace manifest, folder layout, init/add/verify/build orchestration
+  performs all-or-nothing workspace mutations
 
 ModArchiveMapper
   existing: mapArchive(at:)
-  new: mapDirectory(at:archiveName:)
+  new: mapDirectory(at:archiveName:sourceCache:)
   both return [ModMappedEntry]
+
+WorkspaceInitialLoadListBuilder
+  rebuilds initial.pak-sourced records from initial/
+  preserves non-initial records from initial/pak.load_list
 
 ModMerger
   existing PAK-based CLI entry point remains
@@ -315,6 +400,7 @@ Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceManifest.swift
 Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceManager.swift
 Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceError.swift
 Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceReporter.swift
+Sources/SnowRunnerTool/PakWorkspace/WorkspaceInitialLoadListBuilder.swift
 ```
 
 Modify:
@@ -340,6 +426,7 @@ Blocking errors:
 - `initial/` missing for verify/build.
 - Existing non-empty `initial/` during `--init`.
 - Existing `mods/<name>/` during `--add-mods`.
+- Missing cached source PAK for a manifest mod entry.
 - Duplicate mod folder names.
 - Invalid initial folder paths.
 - Invalid mod package folder paths.
@@ -366,12 +453,21 @@ Add focused tests for the new workspace layer:
 
 - `--init` creates manifest and unpacks `initial/`.
 - `--init` rejects an existing non-empty `initial/`.
+- `--init` accepts original fixture layout that passes `verify-basic` even when
+  `verify-snowpak-layout` would fail.
 - `--add-mods` unpacks one mod into `mods/<basename>/`.
+- `--add-mods` copies the source PAK into `.snowrunner/sources/`.
 - `--add-mods` rejects duplicate mod folder names.
-- `--verify` performs a dry-run and writes nothing under `build/`.
+- Multi-mod `--add-mods` is all-or-nothing when one mod fails.
+- `--verify` writes a temporary candidate, verifies it, deletes it, and writes
+  nothing under `build/`.
 - `--build` writes `build/initial.pak`.
 - `--build` writes `build/workspace-build-report.md`.
 - `--build` with no mods repacks edited `initial/`.
+- Unchanged directory-backed PCT entries reuse cached source compressed payloads
+  and supported ZIP metadata.
+- Edited directory-backed PCT entries recompress and regenerate headers.
+- Added `[meshes]\...` files under `initial/` get `initial.pak` source records.
 - Mod-over-initial overwrite succeeds by default.
 - Mod-over-mod conflict fails.
 - Invalid mod directory errors include workspace folder context.
