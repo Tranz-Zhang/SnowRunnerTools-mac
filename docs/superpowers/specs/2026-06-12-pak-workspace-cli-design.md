@@ -54,7 +54,7 @@ Out of scope for v1:
 Create or initialize the workspace from a base initial PAK:
 
 ```bash
-snowrunner-tool workspace path/to/workspace --initial /path/to/initial.pak
+snowrunner-tool workspace path/to/workspace --init /path/to/initial.pak
 ```
 
 Add mod PAKs:
@@ -159,7 +159,7 @@ should behave as if the folder came from that archive name.
 
 ## Command Semantics
 
-### `--initial`
+### `--init`
 
 Rules:
 
@@ -338,7 +338,7 @@ Blocking errors:
 - Workspace manifest missing for commands that require an existing workspace.
 - Workspace manifest version unsupported.
 - `initial/` missing for verify/build.
-- Existing non-empty `initial/` during `--initial`.
+- Existing non-empty `initial/` during `--init`.
 - Existing `mods/<name>/` during `--add-mods`.
 - Duplicate mod folder names.
 - Invalid initial folder paths.
@@ -364,8 +364,8 @@ classes/trucks/demo.xml
 
 Add focused tests for the new workspace layer:
 
-- `--initial` creates manifest and unpacks `initial/`.
-- `--initial` rejects an existing non-empty `initial/`.
+- `--init` creates manifest and unpacks `initial/`.
+- `--init` rejects an existing non-empty `initial/`.
 - `--add-mods` unpacks one mod into `mods/<basename>/`.
 - `--add-mods` rejects duplicate mod folder names.
 - `--verify` performs a dry-run and writes nothing under `build/`.
@@ -385,7 +385,7 @@ mapper tests beside existing `PakModArchiveTests` or create a focused
 Update README command examples after implementation:
 
 ```bash
-snowrunner-tool workspace /tmp/srt-workspace --initial /path/to/initial.pak
+snowrunner-tool workspace /tmp/srt-workspace --init /path/to/initial.pak
 snowrunner-tool workspace /tmp/srt-workspace --add-mods /path/to/mod1.pak /path/to/mod2.pak
 snowrunner-tool workspace /tmp/srt-workspace --verify
 snowrunner-tool workspace /tmp/srt-workspace --build
