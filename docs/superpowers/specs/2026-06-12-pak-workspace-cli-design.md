@@ -130,8 +130,8 @@ added to the workspace so unchanged texture entries can reuse the same
 compressed payloads and ZIP extra fields that `pak merge-mod` preserves today.
 
 `build/` is generated. The tool may overwrite `build/initial.pak` and
-`build/workspace-build-report.md` on each successful build. The build pipeline
-must not read source inputs from `build/`.
+`build/workspace-build-report.md` only after a candidate build passes
+verification. The build pipeline must not read source inputs from `build/`.
 
 ## Workspace Manifest
 
@@ -306,15 +306,21 @@ can produce the final `initial.pak`.
 Rules:
 
 - Create `build/` if missing.
-- Write `build/initial.pak`.
-- Write `build/workspace-build-report.md`.
-- Overwrite those two generated files on each successful build.
-- Do not overwrite the original `initialSourcePath`.
-- Verify the generated PAK with:
+- Write the candidate PAK to a temporary path outside `build/`.
+- Verify the temporary candidate with:
   - `verify-basic`
   - `verify-snowpak-layout`
+- Write the build report to a temporary path.
+- After verification succeeds, atomically replace `build/initial.pak` with the
+  verified temporary candidate.
+- After verification succeeds, atomically replace
+  `build/workspace-build-report.md` with the temporary report.
+- Failed builds must leave the previous `build/initial.pak` and
+  `build/workspace-build-report.md` intact.
+- Do not overwrite the original `initialSourcePath`.
 
-If verification fails, return failure and report the verifier issues.
+If verification fails, delete temporary outputs, return failure, and report the
+verifier issues.
 
 ## Merge Semantics
 
