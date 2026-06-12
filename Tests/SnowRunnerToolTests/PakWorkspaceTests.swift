@@ -346,4 +346,123 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertFalse(workspaceNames.contains { $0.hasPrefix(".mod-") || $0.hasPrefix(".source-") })
         XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
     }
+
+    func testWorkspaceVerifyWritesNoBuildOutput() throws {
+        let workspace = try temporaryDirectory(named: "workspace-verify")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+        let result = try PakWorkspaceManager.verify(workspace: workspace)
+
+        XCTAssertGreaterThan(result.plan.baseEntryCount, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildReport(root: workspace).path))
+    }
+
+    func testWorkspaceBuildPublishesVerifiedOutputAndReport() throws {
+        let workspace = try temporaryDirectory(named: "workspace-build")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+        let result = try PakWorkspaceManager.build(workspace: workspace)
+
+        XCTAssertEqual(result.outputURL, PakWorkspacePaths.buildInitialPak(root: workspace))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildReport(root: workspace).path))
+        let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+        XCTAssertTrue(try PakVerifier.verifyBasic(archive).isEmpty)
+        XCTAssertTrue(try PakVerifier.verifySnowPakLayout(archive).isEmpty)
+    }
+
+    func testWorkspaceBuildWithNoModsIncludesEditedInitialDirectory() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-build-edited-initial")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let initial = PakWorkspacePaths.initialDirectory(root: workspace)
+        try writeFile(root: initial, relativePath: "[media]/classes/trucks/workspace_added.xml", data: Data("<Truck workspace=\"true\"/>".utf8))
+
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+
+        let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+        XCTAssertTrue(archive.entries.contains { $0.name == "[media]\\classes\\trucks\\workspace_added.xml" })
+        let manifestEntry = try XCTUnwrap(archive.entries.first { $0.name == LoadListConstants.manifestEntryName })
+        let manifestData = try PakReader.readUncompressedPayload(entry: manifestEntry, in: archive)
+        let manifest = try LoadListReader.readManifest(data: manifestData)
+        XCTAssertTrue((manifest.recordsByPhase["CLASSES load"] ?? []).contains {
+            $0.manifestPath == "<media>\\classes\\trucks\\workspace_added.xml"
+                && $0.loaderType == "cls_loader"
+                && $0.sourcePak == "initial.pak"
+        })
+    }
+
+    func testWorkspaceBuildAllowsModOverwriteOfInitialByDefault() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-build-overwrite")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let mod = try makePak(named: "overwrite.pak", entries: [
+            "classes/trucks/existing.xml": Data("<Truck mod=\"true\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+
+        let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+        let entry = try XCTUnwrap(archive.entries.first { $0.name == "[media]\\classes\\trucks\\existing.xml" })
+        XCTAssertEqual(try PakReader.readUncompressedPayload(entry: entry, in: archive), Data("<Truck mod=\"true\"/>".utf8))
+    }
+
+    func testWorkspaceVerifyRejectsModToModConflict() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-mod-conflict")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
+            XCTAssertTrue(String(describing: error).contains("[media]\\classes\\trucks\\same.xml"))
+        }
+    }
+
+    func testWorkspaceBuildFailsWhenSourceCacheMissing() throws {
+        let workspace = try temporaryDirectory(named: "workspace-missing-cache")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+        try FileManager.default.removeItem(at: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo"))
+
+        XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
+            XCTAssertTrue(String(describing: error).contains("cached source PAK"))
+        }
+    }
+
+    func testWorkspaceBuildFailureLeavesPreviousOutputAndReportIntact() throws {
+        let workspace = try temporaryDirectory(named: "workspace-build-failure-preserves-output")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+        let previousPak = try Data(contentsOf: PakWorkspacePaths.buildInitialPak(root: workspace))
+        let previousReport = try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8)
+
+        let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+        try FileManager.default.removeItem(at: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo"))
+
+        XCTAssertThrowsError(try PakWorkspaceManager.build(workspace: workspace))
+        XCTAssertEqual(try Data(contentsOf: PakWorkspacePaths.buildInitialPak(root: workspace)), previousPak)
+        XCTAssertEqual(try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8), previousReport)
+    }
+
+    func testWorkspaceVerifyReportsMissingModDirectoryWithWorkspacePath() throws {
+        let workspace = try temporaryDirectory(named: "workspace-missing-mod-dir")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+        try FileManager.default.removeItem(at: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo"))
+
+        XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
+            XCTAssertTrue(String(describing: error).contains("mods/demo"))
+        }
+    }
 }

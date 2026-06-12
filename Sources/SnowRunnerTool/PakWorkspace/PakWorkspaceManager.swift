@@ -107,9 +107,80 @@ public enum PakWorkspaceManager {
         return PakWorkspaceAddModsResult(addedMods: staged.map(\.mod))
     }
 
+    public static func verify(workspace: URL) throws -> ModMergeResult {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("SnowRunnerWorkspaceVerify-\(UUID().uuidString).pak")
+        defer { try? FileManager.default.removeItem(at: temp) }
+        return try buildCandidate(workspace: workspace, output: temp, reportURL: nil)
+    }
+
+    public static func build(workspace: URL) throws -> ModMergeResult {
+        let buildDirectory = PakWorkspacePaths.buildDirectory(root: workspace)
+        try FileManager.default.createDirectory(at: buildDirectory, withIntermediateDirectories: true)
+        let tempPak = workspace.appendingPathComponent(".build-initial-\(UUID().uuidString).pak")
+        let tempReport = workspace.appendingPathComponent(".build-report-\(UUID().uuidString).md")
+        defer {
+            try? FileManager.default.removeItem(at: tempPak)
+            try? FileManager.default.removeItem(at: tempReport)
+        }
+        let result = try buildCandidate(workspace: workspace, output: tempPak, reportURL: tempReport)
+        try replaceItem(at: PakWorkspacePaths.buildInitialPak(root: workspace), with: tempPak)
+        try replaceItem(at: PakWorkspacePaths.buildReport(root: workspace), with: tempReport)
+        return ModMergeResult(
+            plan: result.plan,
+            outputURL: PakWorkspacePaths.buildInitialPak(root: workspace),
+            outputTexturesURL: nil,
+            outputSharedTexturesURL: nil,
+            writtenEntryCount: result.writtenEntryCount,
+            writtenTextureEntryCount: nil,
+            writtenSharedTextureEntryCount: nil
+        )
+    }
+
     private static func folderName(forPak url: URL) -> String {
         let name = url.deletingPathExtension().lastPathComponent
         return name.isEmpty ? url.lastPathComponent : name
+    }
+
+    private static func buildCandidate(workspace: URL, output: URL, reportURL: URL?) throws -> ModMergeResult {
+        let manifest = try loadManifest(workspace: workspace)
+        let initialDirectory = PakWorkspacePaths.initialDirectory(root: workspace)
+        guard FileManager.default.fileExists(atPath: initialDirectory.path) else {
+            throw PakWorkspaceError.missingInitialDirectory(initialDirectory.path)
+        }
+        let baseManifest = try LoadListReader.readManifest(
+            from: initialDirectory.appendingPathComponent(LoadListConstants.manifestEntryName)
+        )
+        let records = try WorkspaceInitialLoadListBuilder.records(fromInitialDirectory: initialDirectory, preservingFrom: baseManifest)
+        let rebuiltManifest = try LoadListBuilder.buildManifest(records: records)
+        let mapped = try manifest.mods.flatMap { mod -> [ModMappedEntry] in
+            let modDirectory = PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName)
+            let cache = workspace.appendingPathComponent(mod.sourceCachePath)
+            guard FileManager.default.fileExists(atPath: modDirectory.path) else {
+                throw PakWorkspaceError.missingModDirectory(modDirectory.path)
+            }
+            guard FileManager.default.fileExists(atPath: cache.path) else {
+                throw PakWorkspaceError.missingSourceCache(cache.path)
+            }
+            return try ModArchiveMapper.mapDirectory(
+                at: modDirectory,
+                archiveName: mod.archiveName,
+                sourceCache: cache,
+                sourceEntries: mod.entries,
+                workspaceRoot: workspace
+            )
+        }
+        let result = try ModMerger.mergeWorkspaceInitial(
+            initialDirectory: initialDirectory,
+            baseManifest: rebuiltManifest,
+            mappedEntries: mapped,
+            outputInitialPak: output,
+            reportURL: nil,
+            verifyOutput: true
+        )
+        if let reportURL {
+            try PakWorkspaceReporter.markdown(result: result).write(to: reportURL, atomically: true, encoding: .utf8)
+        }
+        return result
     }
 
     private static func sourceEntries(for pak: URL, folderName: String) throws -> [PakWorkspaceSourceEntry] {
