@@ -97,6 +97,25 @@ Runtime validation showed this works, and it keeps installation to one generated
 PAK while leaving the game's original `shared_textures.pak` and
 `shared_textures_base.pak` untouched.
 
+Create an editable workspace:
+
+```bash
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool workspace /tmp/srt-workspace --init /path/to/initial.pak
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool workspace /tmp/srt-workspace --add-mods /path/to/mod1.pak /path/to/mod2.pak
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool workspace /tmp/srt-workspace --verify
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool workspace /tmp/srt-workspace --build
+```
+
+The workspace keeps editable source folders under `initial/` and `mods/`.
+Generated output is written only after verification succeeds:
+
+```text
+/tmp/srt-workspace/build/initial.pak
+/tmp/srt-workspace/build/workspace-build-report.md
+```
+
+The original source `initial.pak` is never overwritten.
+
 The separate texture PAK experiment also remains available for comparison:
 
 ```bash
