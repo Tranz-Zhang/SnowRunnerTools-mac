@@ -500,9 +500,15 @@ func testDirectoryModMappingReusesCachedCompressedPCTWhenUnchanged() throws {
     let modRoot = root.appendingPathComponent("mods/pc", isDirectory: true)
     let pct = makeSyntheticPCT(tableCount: 2)
     try writeFile(root: modRoot, relativePath: "prebuild/textures/pct/demo.pct", data: pct)
-    let sourcePak = try makePak(named: "pc.pak", entries: [
-        "prebuild/textures/pct/demo.pct": pct
-    ])
+    let localExtraField = Data([0x01, 0x00, 0x02, 0x00, 0xAA, 0xBB])
+    let centralExtraField = Data([0x02, 0xF0, 0x04, 0x00, 1, 2, 3, 4])
+    let sourceTexture = try makeTexturePakWithRawDeflatedEntry(
+        internalName: "prebuild/textures/pct/demo.pct",
+        data: pct,
+        localExtraField: localExtraField,
+        centralExtraField: centralExtraField
+    )
+    let sourcePak = sourceTexture.url
     let sha = ModArchiveMapper.sha256Hex(uncompressedPayload: pct)
     let entries = [
         PakWorkspaceSourceEntry(
@@ -523,6 +529,8 @@ func testDirectoryModMappingReusesCachedCompressedPCTWhenUnchanged() throws {
     let pctEntry = try XCTUnwrap(mapped.first { $0.internalName == "[textures]\\pct\\demo.pct" })
     XCTAssertNotNil(pctEntry.compressedPayload)
     XCTAssertEqual(pctEntry.data, pct)
+    XCTAssertEqual(pctEntry.localExtraField, localExtraField)
+    XCTAssertEqual(pctEntry.centralExtraField, centralExtraField)
     XCTAssertTrue(mapped.contains { $0.internalName == "[textures]\\pct\\demo.pct_header" })
 }
 
@@ -557,6 +565,19 @@ func testDirectoryModMappingRecompressesEditedPCT() throws {
     XCTAssertEqual(pctEntry.data, edited)
 }
 ```
+
+Also extend the existing raw texture fixture helper used by merge tests so it accepts both ZIP metadata fields:
+
+```swift
+private func makeTexturePakWithRawDeflatedEntry(
+    internalName: String,
+    data: Data,
+    localExtraField: Data = Data(),
+    centralExtraField: Data = Data()
+) throws -> (url: URL, compressedSize: UInt32)
+```
+
+The helper must write `localExtraField` into the local file header and `centralExtraField` into the central directory header. Do not rely on `makePak(...)` for this test because it writes empty extra fields and cannot prove metadata preservation.
 
 - [ ] **Step 2: Run tests to verify failure**
 
@@ -594,7 +615,15 @@ public static func mapDirectory(
     // filesystem paths back to forward-slash mod package names with
     // PakModPath.archiveName(forFileAt:rootDirectory:), then validates duplicates.
     let sources = try PakModDirectoryScanner.scan(rootDirectory: directory)
-    try validateMergeCompatiblePackagePaths(sources.map(\.internalName), archiveName: archiveName)
+    do {
+        try validateMergeCompatiblePackagePaths(sources.map(\.internalName), archiveName: archiveName)
+    } catch ModMergeError.unsupportedModPath(let archive, let path) {
+        let workspacePath = sources
+            .first { $0.internalName == path }?
+            .fileURL
+            .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? path
+        throw ModMergeError.unsupportedModPath(archive: archive, path: workspacePath)
+    }
     let role = try role(
         forPackagePaths: sources.map(\.internalName).map(normalizedPackagePath),
         archiveName: archiveName
@@ -635,6 +664,15 @@ public static func mapDirectory(
         }
     }
     return mapped
+}
+
+private static func workspaceRelativePath(for fileURL: URL, workspaceRoot: URL) -> String {
+    let rootPath = workspaceRoot.standardizedFileURL.path
+    let filePath = fileURL.standardizedFileURL.path
+    guard filePath.hasPrefix(rootPath + "/") else {
+        return filePath
+    }
+    return String(filePath.dropFirst(rootPath.count + 1))
 }
 ```
 
@@ -833,7 +871,66 @@ private static func buildMergedSources(
 ) throws -> [PakFileSource]
 ```
 
-Use the existing archive-based `buildMergedSources` as a template, but read base data through `PakFileSource.readData()`.
+Implement the overload literally, preserving the same ordering and overwrite semantics as the archive-backed helper:
+
+```swift
+private static func buildMergedSources(
+    baseSources: [PakFileSource],
+    mappedEntries: [ModMappedEntry],
+    stringMergeEntries: [ModMappedEntry] = [],
+    loadListData: Data?,
+    requirePakLoadList: Bool
+) throws -> [PakFileSource] {
+    let mappedByName = Dictionary(uniqueKeysWithValues: mappedEntries.map { ($0.internalName, $0) })
+    let stringMergeByName = Dictionary(uniqueKeysWithValues: stringMergeEntries.map { ($0.internalName, $0) })
+    var sources: [PakFileSource] = []
+    sources.reserveCapacity(baseSources.count + mappedEntries.count + stringMergeEntries.count)
+
+    for base in baseSources {
+        if base.internalName == LoadListConstants.manifestEntryName, let loadListData {
+            sources.append(PakFileSource(internalName: base.internalName, data: loadListData))
+            continue
+        }
+        if let mapped = mappedByName[base.internalName] {
+            sources.append(pakFileSource(for: mapped))
+            continue
+        }
+        let payload = try base.readData()
+        if let stringMerge = stringMergeByName[base.internalName] {
+            let mergedPayload = try ModStringTable.merge(
+                baseData: payload,
+                modData: stringMerge.data,
+                path: base.internalName
+            )
+            sources.append(PakFileSource(internalName: base.internalName, data: mergedPayload))
+            continue
+        }
+        sources.append(PakFileSource(
+            internalName: base.internalName,
+            data: payload,
+            localExtraField: base.localExtraField,
+            centralExtraField: base.centralExtraField
+        ))
+    }
+
+    let baseNames = Set(baseSources.map(\.internalName))
+    for mapped in mappedEntries where !baseNames.contains(mapped.internalName) {
+        sources.append(pakFileSource(for: mapped))
+    }
+    for stringMerge in stringMergeEntries where !baseNames.contains(stringMerge.internalName) {
+        sources.append(PakFileSource(internalName: stringMerge.internalName, data: stringMerge.data))
+    }
+
+    return try PakDirectoryScanner.sortedPackSources(sources, requirePakLoadList: requirePakLoadList)
+}
+```
+
+Key contracts this overload must keep:
+- Load-list replacement happens before mapped-entry replacement so the rebuilt `pak.load_list` is always used.
+- Mapped entries overwrite base sources by exact internal name.
+- Existing base string tables are merged with mod string tables through `ModStringTable.merge`; new string tables are appended.
+- Unchanged cached PCT payloads keep their compressed payload and ZIP metadata through `pakFileSource(for:)`.
+- Base source payloads are read through `PakFileSource.readData()` because the base may come from files, in-memory data, or compressed payloads.
 
 - [ ] **Step 4: Run existing merge tests and new core test**
 
@@ -1103,10 +1200,7 @@ private static func commitManifestLast(
     let data = try JSONEncoder.pakWorkspace.encode(manifest)
     try data.write(to: tempManifest, options: .atomic)
     try fileMoves()
-    if FileManager.default.fileExists(atPath: manifestURL.path) {
-        try FileManager.default.removeItem(at: manifestURL)
-    }
-    try FileManager.default.moveItem(at: tempManifest, to: manifestURL)
+    try replaceItem(at: manifestURL, with: tempManifest)
 }
 
 private static func isNonEmptyDirectory(_ url: URL) throws -> Bool {
@@ -1117,11 +1211,18 @@ private static func isNonEmptyDirectory(_ url: URL) throws -> Bool {
     return try !FileManager.default.contentsOfDirectory(atPath: url.path).isEmpty
 }
 
-private static func replaceItem(at source: URL, with destination: URL) throws {
+private static func replaceItem(at destination: URL, with source: URL) throws {
     if FileManager.default.fileExists(atPath: destination.path) {
-        try FileManager.default.removeItem(at: destination)
+        _ = try FileManager.default.replaceItemAt(
+            destination,
+            withItemAt: source,
+            backupItemName: nil,
+            options: [],
+            resultingItemURL: nil
+        )
+    } else {
+        try FileManager.default.moveItem(at: source, to: destination)
     }
-    try FileManager.default.moveItem(at: source, to: destination)
 }
 ```
 
@@ -1247,6 +1348,22 @@ func testWorkspaceBuildFailsWhenSourceCacheMissing() throws {
     }
 }
 
+func testWorkspaceBuildFailureLeavesPreviousOutputAndReportIntact() throws {
+    let workspace = try temporaryDirectory(named: "workspace-build-failure-preserves-output")
+    _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+    _ = try PakWorkspaceManager.build(workspace: workspace)
+    let previousPak = try Data(contentsOf: PakWorkspacePaths.buildInitialPak(root: workspace))
+    let previousReport = try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8)
+
+    let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+    _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+    try FileManager.default.removeItem(at: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo"))
+
+    XCTAssertThrowsError(try PakWorkspaceManager.build(workspace: workspace))
+    XCTAssertEqual(try Data(contentsOf: PakWorkspacePaths.buildInitialPak(root: workspace)), previousPak)
+    XCTAssertEqual(try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8), previousReport)
+}
+
 func testWorkspaceVerifyReportsMissingModDirectoryWithWorkspacePath() throws {
     let workspace = try temporaryDirectory(named: "workspace-missing-mod-dir")
     _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
@@ -1310,8 +1427,8 @@ public static func build(workspace: URL) throws -> ModMergeResult {
         try? FileManager.default.removeItem(at: tempReport)
     }
     let result = try buildCandidate(workspace: workspace, output: tempPak, reportURL: tempReport, publish: true)
-    try replaceItem(at: tempPak, with: PakWorkspacePaths.buildInitialPak(root: workspace))
-    try replaceItem(at: tempReport, with: PakWorkspacePaths.buildReport(root: workspace))
+    try replaceItem(at: PakWorkspacePaths.buildInitialPak(root: workspace), with: tempPak)
+    try replaceItem(at: PakWorkspacePaths.buildReport(root: workspace), with: tempReport)
     return ModMergeResult(
         plan: result.plan,
         outputURL: PakWorkspacePaths.buildInitialPak(root: workspace),
