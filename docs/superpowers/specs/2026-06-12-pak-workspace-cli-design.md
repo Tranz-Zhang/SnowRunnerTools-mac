@@ -182,6 +182,12 @@ mapping may reuse preserved compressed payloads and ZIP metadata from the cached
 source PAK. If edited, the workspace file bytes win and the entry is recompressed
 normally.
 
+The `sha256` value is always computed over the uncompressed payload bytes
+returned by `PakReader.readUncompressedPayload`, not over the compressed ZIP
+entry bytes. This matches the bytes `PakModUnpacker` writes into `mods/<name>/`
+and makes unchanged-file detection a direct comparison against workspace file
+contents.
+
 ## Workspace Transaction Model
 
 Workspace mutations must be all-or-nothing.
@@ -192,6 +198,8 @@ Workspace mutations must be all-or-nothing.
 - Write the new manifest to a temporary file.
 - Commit by moving the temporary initial folder into place and atomically
   replacing `.snowrunner-workspace.json`.
+- Commit the manifest last. A workspace is considered initialized only after
+  `.snowrunner-workspace.json` points at committed folders.
 - If any step fails before commit, remove temporary files and leave the existing
   workspace unchanged.
 
@@ -203,11 +211,23 @@ Workspace mutations must be all-or-nothing.
 - Copy each source PAK into a temporary source-cache location.
 - Write the updated manifest to a temporary file.
 - Commit all new mod folders, source-cache files, and the manifest together.
+- Commit the manifest last. Manifest entries are the source of truth for which
+  mod folders and cached source PAKs belong to the workspace.
 - If any mod in the invocation fails, remove temporary files and leave the
   workspace unchanged.
 
 The implementation should prefer same-directory temporary paths so final moves
 can use filesystem atomic rename semantics where available.
+
+Crash tolerance:
+
+- Multiple filesystem renames cannot be perfectly atomic as one unit.
+- On startup for any workspace command, ignore unreferenced temp folders,
+  unreferenced cache files, and mod folders not listed in the manifest.
+- Best-effort cleanup of ignored orphan paths is allowed, but build and verify
+  must rely on the manifest rather than directory presence alone.
+- If the manifest references a missing mod folder or missing cached source PAK,
+  fail clearly instead of guessing from orphan files.
 
 ## Command Semantics
 
@@ -336,9 +356,27 @@ Workspace initial load-list builder contract:
   unchanged.
 - Classify files physically present in the generated `initial.pak` with
   `sourcePak == "initial.pak"`.
-- Classify added `[meshes]\...` files as `mesh_loader / initial.pak / MESH load`
-  because they are packed into the generated `initial.pak`, not into
-  `shared.pak`.
+- Accepted load-list record rules for files physically present in
+  `initial/`:
+  - `[media]\_templates\*.xml` -> `tpl_loader / initial.pak / TEMPLATES load`
+  - `[media]\...\classes\...\*.xml` -> `cls_loader / initial.pak / CLASSES load`
+  - `[ssl_cache]\*.sslbundle` -> `sslbundle / initial.pak / SSL_INITIAL load`
+  - `[meshes]\...` -> `mesh_loader / initial.pak / MESH load`
+  - `[textures]\pct\*.pct_header` -> `pct_mr2_header` and `pct_faces /
+    initial.pak / TEXTURE load`
+- The `[meshes]\...` rule intentionally differs from the strict full-rebuild
+  classifier because workspace-added meshes are packed into the generated
+  `initial.pak`, not into `shared.pak`.
+- Accepted nil-record paths:
+  - `pak.load_list`
+  - `initial.cache_block`
+  - `[ssl_cache]\initial_pak`
+  - `[strings]\*.str`
+  - `[sound]\...`
+  - `[ps]\...`
+  - `[ps_common]\...`
+  - `[textures]\...` entries other than load-listed PCT headers
+  - `[ui]\...`
 - Reject paths that look load-listed but have no known workspace loader rule.
 
 Texture policy:
@@ -464,6 +502,9 @@ Add focused tests for the new workspace layer:
 - `--build` writes `build/initial.pak`.
 - `--build` writes `build/workspace-build-report.md`.
 - `--build` with no mods repacks edited `initial/`.
+- Missing `.snowrunner/sources/<mod>.pak` for a manifest mod entry fails with a
+  clear workspace error.
+- Non-`initial.pak` records from `initial/pak.load_list` survive a no-mod build.
 - Unchanged directory-backed PCT entries reuse cached source compressed payloads
   and supported ZIP metadata.
 - Edited directory-backed PCT entries recompress and regenerate headers.
