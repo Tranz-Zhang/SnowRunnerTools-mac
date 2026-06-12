@@ -270,4 +270,36 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(CLI.run(arguments: ["pak", "verify-basic", candidate.path]).exitCode, 0)
         XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", candidate.path]).exitCode, 0)
     }
+
+    func testWorkspaceCLIInitAddVerifyAndBuild() throws {
+        let workspace = try temporaryDirectory(named: "cli-workspace")
+        let mod = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+
+        let initResult = CLI.run(arguments: ["workspace", workspace.path, "--init", TestFixtures.initialPak.path])
+        XCTAssertEqual(initResult.exitCode, 0, initResult.stderr)
+        XCTAssertTrue(initResult.stdout.contains("initialized workspace"))
+
+        let addResult = CLI.run(arguments: ["workspace", workspace.path, "--add-mods", mod.path])
+        XCTAssertEqual(addResult.exitCode, 0, addResult.stderr)
+        XCTAssertTrue(addResult.stdout.contains("added 1 mod"))
+
+        let verifyResult = CLI.run(arguments: ["workspace", workspace.path, "--verify"])
+        XCTAssertEqual(verifyResult.exitCode, 0, verifyResult.stderr)
+        XCTAssertTrue(verifyResult.stdout.contains("verified workspace"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+
+        let buildResult = CLI.run(arguments: ["workspace", workspace.path, "--build"])
+        XCTAssertEqual(buildResult.exitCode, 0, buildResult.stderr)
+        XCTAssertTrue(buildResult.stdout.contains("built workspace"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+    }
+
+    func testWorkspaceCLIRejectsMissingArguments() {
+        let result = CLI.run(arguments: ["workspace"])
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.stderr.contains("Usage: snowrunner-tool workspace"))
+    }
 }
