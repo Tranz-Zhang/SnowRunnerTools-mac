@@ -23,7 +23,7 @@
 - Create `Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceManager.swift`
   - Implements `init`, `addMods`, `verify`, and `build` orchestration.
 - Modify `Sources/SnowRunnerTool/ModMerge/ModArchiveMapper.swift`
-  - Add directory-backed mapping using cached source archive metadata for unchanged entries.
+  - Add directory-backed mapping using cached source archive metadata for unchanged entries. Reuse the existing public `PakModDirectoryScanner` type currently defined in `Sources/SnowRunnerTool/ModMerge/PakModWriter.swift`.
 - Modify `Sources/SnowRunnerTool/ModMerge/ModMerger.swift`
   - Extract shared core that accepts base file sources + base manifest + mapped entries.
 - Modify `Sources/SnowRunnerTool/CLI.swift`
@@ -590,6 +590,9 @@ public static func mapDirectory(
     sourceEntries: [PakWorkspaceSourceEntry],
     workspaceRoot: URL
 ) throws -> [ModMappedEntry] {
+    // PakModDirectoryScanner already exists in PakModWriter.swift. It converts
+    // filesystem paths back to forward-slash mod package names with
+    // PakModPath.archiveName(forFileAt:rootDirectory:), then validates duplicates.
     let sources = try PakModDirectoryScanner.scan(rootDirectory: directory)
     try validateMergeCompatiblePackagePaths(sources.map(\.internalName), archiveName: archiveName)
     let role = try role(
@@ -658,7 +661,6 @@ git commit -m "feat: map workspace mod directories"
 
 **Files:**
 - Modify: `Sources/SnowRunnerTool/ModMerge/ModMerger.swift`
-- Modify: `Sources/SnowRunnerTool/ModMerge/ModMergePlan.swift`
 - Test: `Tests/SnowRunnerToolTests/PakWorkspaceTests.swift`
 
 - [ ] **Step 1: Add core merge test with directory base sources**
@@ -764,16 +766,37 @@ let inlineTextureEntries = try combinedExperimentalTextureEntries(
 )
 let collisions = initialEntries.map(\.internalName).filter { baseNames.contains($0) }.sorted()
 let inlineTextureCollisions = inlineTextureEntries.map(\.internalName).filter { baseNames.contains($0) }.sorted()
+let stringMergeEntries = partitionedEntries.stringMergeEntries
 let overlay = try ModLoadListOverlay.overlay(
     baseManifest: baseManifest,
     mappedEntries: mappedEntries,
     textureSourcePakOverride: "initial.pak"
 )
 let loadListData = try LoadListWriter.encodeManifest(overlay.manifest)
+let plan = ModMergePlan(
+    baseEntryCount: initialSources.count,
+    mappedModEntryCount: rawMappedEntries.count,
+    netNewOuterPakEntryCount: initialEntries.filter { !baseNames.contains($0.internalName) }.count
+        + inlineTextureEntries.filter { !baseNames.contains($0.internalName) }.count
+        + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
+    collisions: collisions,
+    textureBaseEntryCount: 0,
+    netNewTexturePakEntryCount: 0,
+    textureCollisions: [],
+    sharedTextureEntryCount: 0,
+    netNewSharedTexturePakEntryCount: inlineTextureEntries.count - inlineTextureCollisions.count,
+    sharedTextureCollisions: inlineTextureCollisions,
+    stringMergeEntryCount: stringMergeEntries.count,
+    duplicateIdenticalMappedNames: duplicateResolution.duplicateIdenticalNames,
+    loadListSourceOverrides: overlay.sourceOverrides,
+    loadListCandidateRecords: overlay.modManagedRecords,
+    netNewLoadListRecordCount: overlay.netNewRecordCount,
+    texturesInInitial: true
+)
 let sources = try buildMergedSources(
     baseSources: initialSources,
     mappedEntries: initialEntries + inlineTextureEntries,
-    stringMergeEntries: partitionedEntries.stringMergeEntries,
+    stringMergeEntries: stringMergeEntries,
     loadListData: loadListData,
     requirePakLoadList: true
 )
@@ -785,6 +808,17 @@ if verifyOutput {
     let layoutIssues = try PakVerifier.verifySnowPakLayout(writtenArchive)
     if !layoutIssues.isEmpty { throw ModMergeError.verificationFailed(name: "verify-snowpak-layout", issues: layoutIssues) }
 }
+let result = ModMergeResult(
+    plan: plan,
+    outputURL: outputInitialPak,
+    outputTexturesURL: nil,
+    outputSharedTexturesURL: nil,
+    writtenEntryCount: written,
+    writtenTextureEntryCount: nil,
+    writtenSharedTextureEntryCount: nil
+)
+try writeReportIfNeeded(result, to: reportURL)
+return result
 ```
 
 Also add a new overload:
@@ -815,7 +849,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SnowRunnerTool/ModMerge/ModMerger.swift Sources/SnowRunnerTool/ModMerge/ModMergePlan.swift Tests/SnowRunnerToolTests/PakWorkspaceTests.swift
+git add Sources/SnowRunnerTool/ModMerge/ModMerger.swift Tests/SnowRunnerToolTests/PakWorkspaceTests.swift
 git commit -m "feat: share merge core with workspace"
 ```
 
@@ -854,6 +888,16 @@ func testWorkspaceInitRejectsExistingNonEmptyInitial() throws {
     }
 }
 
+func testWorkspaceInitAcceptsOriginalLayoutThatFailsSnowPakLayout() throws {
+    XCTAssertEqual(CLI.run(arguments: ["pak", "verify-snowpak-layout", TestFixtures.initialPak.path]).exitCode, 1)
+    let workspace = try temporaryDirectory(named: "workspace-init-original-layout")
+
+    let result = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+    XCTAssertEqual(result.initialEntryCount, 10308)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.manifestURL(root: workspace).path))
+}
+
 func testWorkspaceAddModsUnpacksCachesAndRecordsManifest() throws {
     let workspace = try temporaryDirectory(named: "workspace-add-mod")
     _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
@@ -879,6 +923,25 @@ func testWorkspaceAddModsRejectsDuplicateFolderName() throws {
     _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first])
 
     XCTAssertThrowsError(try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [second]))
+}
+
+func testWorkspaceAddModsRejectsInvalidModWithoutCommittingAnyMod() throws {
+    let workspace = try temporaryDirectory(named: "workspace-add-invalid-atomic")
+    _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+    let valid = try makePak(named: "valid.pak", entries: [
+        "classes/trucks/valid.xml": Data("<Truck/>".utf8)
+    ])
+    let invalid = try makePak(named: "invalid.pak", entries: [
+        "unknown/path.bin": Data([1, 2, 3])
+    ])
+
+    XCTAssertThrowsError(try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [valid, invalid]))
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "valid").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "invalid").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "valid").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "invalid").path))
+    XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
 }
 ```
 
@@ -958,6 +1021,9 @@ public enum PakWorkspaceManager {
             if existingNames.contains(name) || newNames.filter({ $0 == name }).count > 1 {
                 throw PakWorkspaceError.duplicateModFolderName(name)
             }
+        }
+        for pak in modPaks {
+            _ = try ModArchiveMapper.mapArchive(at: pak)
         }
 
         var staged: [(mod: PakWorkspaceMod, tempMod: URL, finalMod: URL, tempCache: URL, finalCache: URL)] = []
@@ -1115,6 +1181,60 @@ func testWorkspaceBuildPublishesVerifiedOutputAndReport() throws {
     XCTAssertTrue(try PakVerifier.verifySnowPakLayout(archive).isEmpty)
 }
 
+func testWorkspaceBuildWithNoModsIncludesEditedInitialDirectory() throws {
+    let base = try makeSyntheticInitialPak()
+    let workspace = try temporaryDirectory(named: "workspace-build-edited-initial")
+    _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+    let initial = PakWorkspacePaths.initialDirectory(root: workspace)
+    try writeFile(root: initial, relativePath: "[media]/classes/trucks/workspace_added.xml", data: Data("<Truck workspace=\"true\"/>".utf8))
+
+    _ = try PakWorkspaceManager.build(workspace: workspace)
+
+    let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+    XCTAssertTrue(archive.entries.contains { $0.name == "[media]\\classes\\trucks\\workspace_added.xml" })
+    let manifestEntry = try XCTUnwrap(archive.entries.first { $0.name == LoadListConstants.manifestEntryName })
+    let manifestData = try PakReader.readUncompressedPayload(entry: manifestEntry, in: archive)
+    let manifest = try LoadListReader.readManifest(data: manifestData)
+    XCTAssertTrue((manifest.recordsByPhase["CLASSES load"] ?? []).contains {
+        $0.manifestPath == "<media>\\classes\\trucks\\workspace_added.xml"
+            && $0.loaderType == "cls_loader"
+            && $0.sourcePak == "initial.pak"
+    })
+}
+
+func testWorkspaceBuildAllowsModOverwriteOfInitialByDefault() throws {
+    let base = try makeSyntheticInitialPak()
+    let workspace = try temporaryDirectory(named: "workspace-build-overwrite")
+    _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+    let mod = try makePak(named: "overwrite.pak", entries: [
+        "classes/trucks/existing.xml": Data("<Truck mod=\"true\"/>".utf8)
+    ])
+    _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+    _ = try PakWorkspaceManager.build(workspace: workspace)
+
+    let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+    let entry = try XCTUnwrap(archive.entries.first { $0.name == "[media]\\classes\\trucks\\existing.xml" })
+    XCTAssertEqual(try PakReader.readUncompressedPayload(entry: entry, in: archive), Data("<Truck mod=\"true\"/>".utf8))
+}
+
+func testWorkspaceVerifyRejectsModToModConflict() throws {
+    let base = try makeSyntheticInitialPak()
+    let workspace = try temporaryDirectory(named: "workspace-mod-conflict")
+    _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+    let first = try makePak(named: "first.pak", entries: [
+        "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+    ])
+    let second = try makePak(named: "second.pak", entries: [
+        "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+    ])
+    _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+    XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
+        XCTAssertTrue(String(describing: error).contains("[media]\\classes\\trucks\\same.xml"))
+    }
+}
+
 func testWorkspaceBuildFailsWhenSourceCacheMissing() throws {
     let workspace = try temporaryDirectory(named: "workspace-missing-cache")
     _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
@@ -1124,6 +1244,18 @@ func testWorkspaceBuildFailsWhenSourceCacheMissing() throws {
 
     XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
         XCTAssertTrue(String(describing: error).contains("cached source PAK"))
+    }
+}
+
+func testWorkspaceVerifyReportsMissingModDirectoryWithWorkspacePath() throws {
+    let workspace = try temporaryDirectory(named: "workspace-missing-mod-dir")
+    _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+    let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+    _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+    try FileManager.default.removeItem(at: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo"))
+
+    XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
+        XCTAssertTrue(String(describing: error).contains("mods/demo"))
     }
 }
 ```
@@ -1171,8 +1303,8 @@ public static func verify(workspace: URL) throws -> ModMergeResult {
 public static func build(workspace: URL) throws -> ModMergeResult {
     let buildDirectory = PakWorkspacePaths.buildDirectory(root: workspace)
     try FileManager.default.createDirectory(at: buildDirectory, withIntermediateDirectories: true)
-    let tempPak = buildDirectory.appendingPathComponent(".initial-\(UUID().uuidString).pak")
-    let tempReport = buildDirectory.appendingPathComponent(".workspace-build-report-\(UUID().uuidString).md")
+    let tempPak = workspace.appendingPathComponent(".build-initial-\(UUID().uuidString).pak")
+    let tempReport = workspace.appendingPathComponent(".build-report-\(UUID().uuidString).md")
     defer {
         try? FileManager.default.removeItem(at: tempPak)
         try? FileManager.default.removeItem(at: tempReport)
