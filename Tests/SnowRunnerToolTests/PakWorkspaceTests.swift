@@ -207,4 +207,63 @@ final class PakWorkspaceTests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains("mods/pc/prebuild/textures/pct/demo.pct"))
         }
     }
+
+    func testModMergerWritesInlineTextureWorkspaceCandidateFromDirectorySources() throws {
+        let workspace = try temporaryDirectory(named: "workspace-merge-core")
+        let initial = PakWorkspacePaths.initialDirectory(root: workspace)
+        try FileManager.default.createDirectory(at: initial, withIntermediateDirectories: true)
+        let baseManifest = try LoadListBuilder.buildManifest(records: [
+            LoadListRecord(
+                manifestPath: "<media>\\classes\\trucks\\existing.xml",
+                loaderType: "cls_loader",
+                sourcePak: "initial.pak",
+                phase: "CLASSES load"
+            )
+        ])
+        try LoadListWriter.writeManifest(baseManifest, to: initial.appendingPathComponent("pak.load_list"))
+        try writeFile(root: initial, relativePath: "initial.cache_block", data: Data("cache".utf8))
+        try writeFile(root: initial, relativePath: "[media]/classes/trucks/existing.xml", data: Data("<Truck/>".utf8))
+        try writeFile(root: initial, relativePath: "[ssl_cache]/initial_pak", data: Data("ssl".utf8))
+        try writeFile(root: initial, relativePath: "[strings]/strings_english.str", data: stringTableData("BASE_KEY\t\t\"Base\""))
+
+        let mod = try makePak(named: "pc.pak", entries: [
+            "prebuild/textures/pct/new_texture.pct": makeSyntheticPCT(tableCount: 2)
+        ])
+        let modDir = PakWorkspacePaths.modDirectory(root: workspace, folderName: "pc")
+        try PakModUnpacker.unpack(archiveURL: mod, toDirectory: modDir)
+        let modArchive = try PakReader.readArchive(at: mod)
+        let sourceEntries = try modArchive.entries.map {
+            let workspacePath = "mods/pc/" + (try PakModPath.fileSystemRelativePath(forArchiveName: $0.name))
+            return PakWorkspaceSourceEntry(
+                sourceEntryName: $0.name,
+                workspacePath: workspacePath,
+                sha256: ModArchiveMapper.sha256Hex(uncompressedPayload: try PakReader.readUncompressedPayload(entry: $0, in: modArchive))
+            )
+        }
+        let mapped = try ModArchiveMapper.mapDirectory(
+            at: modDir,
+            archiveName: "pc.pak",
+            sourceCache: mod,
+            sourceEntries: sourceEntries,
+            workspaceRoot: workspace
+        )
+        let records = try WorkspaceInitialLoadListBuilder.records(fromInitialDirectory: initial, preservingFrom: baseManifest)
+        let rebuiltManifest = try LoadListBuilder.buildManifest(records: records)
+        let output = workspace.appendingPathComponent("candidate.pak")
+
+        let result = try ModMerger.mergeWorkspaceInitial(
+            initialDirectory: initial,
+            baseManifest: rebuiltManifest,
+            mappedEntries: mapped,
+            outputInitialPak: output,
+            reportURL: nil,
+            verifyOutput: true
+        )
+
+        XCTAssertEqual(result.outputURL, output)
+        let outputArchive = try PakReader.readArchive(at: output)
+        XCTAssertTrue(outputArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct" })
+        XCTAssertTrue(outputArchive.entries.contains { $0.name == "[textures]\\pct\\new_texture.pct_header" })
+        XCTAssertTrue(try PakVerifier.verifySnowPakLayout(outputArchive).isEmpty)
+    }
 }

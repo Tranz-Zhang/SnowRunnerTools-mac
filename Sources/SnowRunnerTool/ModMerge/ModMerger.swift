@@ -225,6 +225,90 @@ public enum ModMerger {
         return result
     }
 
+    public static func mergeWorkspaceInitial(
+        initialDirectory: URL,
+        baseManifest: LoadListManifest,
+        mappedEntries rawMappedEntries: [ModMappedEntry],
+        outputInitialPak: URL,
+        reportURL: URL?,
+        verifyOutput: Bool
+    ) throws -> ModMergeResult {
+        let initialSources = try PakDirectoryScanner.scan(rootDirectory: initialDirectory)
+        let baseNames = Set(initialSources.map(\.internalName))
+        let partitionedEntries = try partitionStringTableEntries(rawMappedEntries)
+        let duplicateResolution = try resolveMappedDuplicates(partitionedEntries.regularEntries)
+        let mappedEntries = duplicateResolution.entries
+        let initialEntries = mappedEntries.filter { $0.targetArchive == .initial }
+        let inlineTextureEntries = try combinedExperimentalTextureEntries(
+            mappedEntries.filter { $0.targetArchive == .sharedTexturesBase || $0.targetArchive == .sharedTextures }
+        )
+        let collisions = initialEntries
+            .map(\.internalName)
+            .filter { baseNames.contains($0) }
+            .sorted()
+        let inlineTextureCollisions = inlineTextureEntries
+            .map(\.internalName)
+            .filter { baseNames.contains($0) }
+            .sorted()
+        let stringMergeEntries = partitionedEntries.stringMergeEntries
+        let overlay = try ModLoadListOverlay.overlay(
+            baseManifest: baseManifest,
+            mappedEntries: mappedEntries,
+            textureSourcePakOverride: "initial.pak"
+        )
+        let loadListData = try LoadListWriter.encodeManifest(overlay.manifest)
+        let plan = ModMergePlan(
+            baseEntryCount: initialSources.count,
+            mappedModEntryCount: rawMappedEntries.count,
+            netNewOuterPakEntryCount: initialEntries.filter { !baseNames.contains($0.internalName) }.count
+                + inlineTextureEntries.filter { !baseNames.contains($0.internalName) }.count
+                + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
+            collisions: collisions,
+            textureBaseEntryCount: 0,
+            netNewTexturePakEntryCount: 0,
+            textureCollisions: [],
+            sharedTextureEntryCount: 0,
+            netNewSharedTexturePakEntryCount: inlineTextureEntries.count - inlineTextureCollisions.count,
+            sharedTextureCollisions: inlineTextureCollisions,
+            stringMergeEntryCount: stringMergeEntries.count,
+            duplicateIdenticalMappedNames: duplicateResolution.duplicateIdenticalNames,
+            loadListSourceOverrides: overlay.sourceOverrides,
+            loadListCandidateRecords: overlay.modManagedRecords,
+            netNewLoadListRecordCount: overlay.netNewRecordCount,
+            texturesInInitial: true
+        )
+        let sources = try buildMergedSources(
+            baseSources: initialSources,
+            mappedEntries: initialEntries + inlineTextureEntries,
+            stringMergeEntries: stringMergeEntries,
+            loadListData: loadListData,
+            requirePakLoadList: true
+        )
+        let written = try PakWriter.writeArchive(fileSources: sources, to: outputInitialPak)
+        if verifyOutput {
+            let writtenArchive = try PakReader.readArchive(at: outputInitialPak)
+            let basicIssues = try PakVerifier.verifyBasic(writtenArchive)
+            if !basicIssues.isEmpty {
+                throw ModMergeError.verificationFailed(name: "verify-basic", issues: basicIssues)
+            }
+            let layoutIssues = try PakVerifier.verifySnowPakLayout(writtenArchive)
+            if !layoutIssues.isEmpty {
+                throw ModMergeError.verificationFailed(name: "verify-snowpak-layout", issues: layoutIssues)
+            }
+        }
+        let result = ModMergeResult(
+            plan: plan,
+            outputURL: outputInitialPak,
+            outputTexturesURL: nil,
+            outputSharedTexturesURL: nil,
+            writtenEntryCount: written,
+            writtenTextureEntryCount: nil,
+            writtenSharedTextureEntryCount: nil
+        )
+        try writeReportIfNeeded(result, to: reportURL)
+        return result
+    }
+
     private static func validateOutputPaths(_ outputs: [URL], inputs: [URL]) throws {
         var seenOutputs: Set<String> = []
         for output in outputs {
@@ -372,6 +456,56 @@ public enum ModMerger {
         }
 
         let baseNames = Set(baseArchive.entries.map(\.name))
+        for mapped in mappedEntries where !baseNames.contains(mapped.internalName) {
+            sources.append(pakFileSource(for: mapped))
+        }
+        for stringMerge in stringMergeEntries where !baseNames.contains(stringMerge.internalName) {
+            sources.append(PakFileSource(internalName: stringMerge.internalName, data: stringMerge.data))
+        }
+
+        return try PakDirectoryScanner.sortedPackSources(sources, requirePakLoadList: requirePakLoadList)
+    }
+
+    private static func buildMergedSources(
+        baseSources: [PakFileSource],
+        mappedEntries: [ModMappedEntry],
+        stringMergeEntries: [ModMappedEntry] = [],
+        loadListData: Data?,
+        requirePakLoadList: Bool
+    ) throws -> [PakFileSource] {
+        let mappedByName = Dictionary(uniqueKeysWithValues: mappedEntries.map { ($0.internalName, $0) })
+        let stringMergeByName = Dictionary(uniqueKeysWithValues: stringMergeEntries.map { ($0.internalName, $0) })
+        var sources: [PakFileSource] = []
+        sources.reserveCapacity(baseSources.count + mappedEntries.count + stringMergeEntries.count)
+
+        for base in baseSources {
+            if base.internalName == LoadListConstants.manifestEntryName, let loadListData {
+                sources.append(PakFileSource(internalName: base.internalName, data: loadListData))
+                continue
+            }
+            if let mapped = mappedByName[base.internalName] {
+                sources.append(pakFileSource(for: mapped))
+                continue
+            }
+            let payload = try base.readData()
+            if let stringMerge = stringMergeByName[base.internalName] {
+                let mergedPayload = try ModStringTable.merge(
+                    baseData: payload,
+                    modData: stringMerge.data,
+                    path: base.internalName
+                )
+                sources.append(PakFileSource(internalName: base.internalName, data: mergedPayload))
+                continue
+            }
+            sources.append(PakFileSource(
+                internalName: base.internalName,
+                data: payload,
+                localExtraField: base.localExtraField,
+                centralExtraField: base.centralExtraField
+            ))
+        }
+
+        let baseNames = Set(baseSources.map(\.internalName))
         for mapped in mappedEntries where !baseNames.contains(mapped.internalName) {
             sources.append(pakFileSource(for: mapped))
         }
