@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import zlib
 
 public enum ModMergeTargetArchive: String, Equatable {
@@ -39,6 +40,10 @@ public struct ModMappedEntry: Equatable {
 }
 
 public enum ModArchiveMapper {
+    public static func sha256Hex(uncompressedPayload data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     public static func validateMergeCompatiblePackagePaths(_ names: [String], archiveName: String) throws {
         let normalizedNames = names
             .filter { !isDirectoryEntry($0) }
@@ -87,6 +92,93 @@ public enum ModArchiveMapper {
             }
         }
 
+        return mapped
+    }
+
+    public static func mapDirectory(
+        at directory: URL,
+        archiveName: String,
+        sourceCache: URL?,
+        sourceEntries: [PakWorkspaceSourceEntry],
+        workspaceRoot: URL
+    ) throws -> [ModMappedEntry] {
+        let sources = try PakModDirectoryScanner.scan(rootDirectory: directory)
+        do {
+            try validateMergeCompatiblePackagePaths(sources.map(\.internalName), archiveName: archiveName)
+        } catch ModMergeError.unsupportedModPath(let archive, let path) {
+            let workspacePath = sources
+                .first { $0.internalName == path }?
+                .fileURL
+                .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? path
+            throw ModMergeError.unsupportedModPath(archive: archive, path: workspacePath)
+        }
+
+        let role = try role(
+            forPackagePaths: sources.map(\.internalName).map(normalizedPackagePath),
+            archiveName: archiveName
+        )
+        let cacheArchive = try sourceCache.map { try PakReader.readArchive(at: $0) }
+        let cacheByName = Dictionary(uniqueKeysWithValues: (cacheArchive?.entries ?? []).map { ($0.name, $0) })
+        let sourceHashByName = Dictionary(uniqueKeysWithValues: sourceEntries.map { ($0.sourceEntryName, $0.sha256) })
+
+        var mapped: [ModMappedEntry] = []
+        for source in sources {
+            let payload = try source.readData()
+            let destinations: [(
+                internalName: String,
+                targetArchive: ModMergeTargetArchive,
+                data: Data,
+                preserveZipExtraFields: Bool,
+                preserveCompressedPayload: Bool
+            )]
+            do {
+                destinations = try map(
+                    source.internalName,
+                    role: role,
+                    archiveURL: URL(fileURLWithPath: archiveName),
+                    payload: payload
+                )
+            } catch ModMergeError.unsupportedModPath(let archive, let path) {
+                let sourceWorkspacePath = source.fileURL
+                    .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? source.internalName
+                let workspacePath = path == source.internalName ? sourceWorkspacePath : path
+                throw ModMergeError.unsupportedModPath(archive: archive, path: workspacePath)
+            } catch ModMergeError.invalidModArchive(let archive, let reason) {
+                let workspacePath = source.fileURL
+                    .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? source.internalName
+                throw ModMergeError.invalidModArchive(
+                    archive: archive,
+                    reason: reason.replacingOccurrences(of: source.internalName, with: workspacePath)
+                )
+            }
+
+            let unchanged = sourceHashByName[source.internalName] == sha256Hex(uncompressedPayload: payload)
+            let cachedEntry = cacheByName[source.internalName]
+            let compressedPayload: PakCompressedPayload?
+            if unchanged, let cacheArchive, let cachedEntry {
+                compressedPayload = PakCompressedPayload(
+                    compressionMethod: cachedEntry.compressionMethod,
+                    data: try PakReader.readCompressedPayload(entry: cachedEntry, in: cacheArchive),
+                    crc32: cachedEntry.crc32,
+                    uncompressedSize: cachedEntry.uncompressedSize
+                )
+            } else {
+                compressedPayload = nil
+            }
+
+            for destination in destinations {
+                mapped.append(ModMappedEntry(
+                    archiveURL: directory,
+                    originalName: source.internalName,
+                    internalName: destination.internalName,
+                    targetArchive: destination.targetArchive,
+                    data: destination.data,
+                    localExtraField: destination.preserveZipExtraFields && unchanged ? (cachedEntry?.localExtraField ?? Data()) : Data(),
+                    centralExtraField: destination.preserveZipExtraFields && unchanged ? (cachedEntry?.centralExtraField ?? Data()) : Data(),
+                    compressedPayload: destination.preserveCompressedPayload && unchanged ? compressedPayload : nil
+                ))
+            }
+        }
         return mapped
     }
 
@@ -237,5 +329,14 @@ public enum ModArchiveMapper {
     private static func consumePrefix(_ prefix: String, from path: String) -> String? {
         guard path.hasPrefix(prefix) else { return nil }
         return String(path.dropFirst(prefix.count))
+    }
+
+    private static func workspaceRelativePath(for fileURL: URL, workspaceRoot: URL) -> String {
+        let rootPath = workspaceRoot.standardizedFileURL.path
+        let filePath = fileURL.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath + "/") else {
+            return filePath
+        }
+        return String(filePath.dropFirst(rootPath.count + 1))
     }
 }

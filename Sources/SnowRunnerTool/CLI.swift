@@ -20,6 +20,10 @@ public enum CLI {
             return runLoadListCommand(Array(arguments.dropFirst()))
         }
 
+        if arguments.first == "workspace" {
+            return runWorkspaceCommand(Array(arguments.dropFirst()))
+        }
+
         guard arguments.first == "pak" else {
             return CLIResult(exitCode: 2, stdout: "", stderr: "Unknown command: \(arguments[0])\n\n\(usage())")
         }
@@ -37,6 +41,10 @@ public enum CLI {
           cache-block verify-content-equivalent <reference.cache_block> <candidate.cache_block>
           load-list inspect <pak.load_list>
           load-list create-initial <target.load_list> <initial.pak> <shared.pak> <shared_sound.pak>
+          workspace <workspace> --init <initial.pak>
+          workspace <workspace> --add-mods <mod.pak> [<mod.pak> ...]
+          workspace <workspace> --verify
+          workspace <workspace> --build
           pak inspect <pak>
           pak unpack <pak> <dir>
           pak unpack-mod <mod.pak> <dir>
@@ -50,6 +58,66 @@ public enum CLI {
           pak verify-basic <pak>
           pak verify-content-equivalent <reference.pak> <candidate.pak>
           pak verify-snowpak-layout <pak>
+        """
+    }
+
+    private static func runWorkspaceCommand(_ arguments: [String]) -> CLIResult {
+        guard arguments.count >= 2 else {
+            return CLIResult(exitCode: 2, stdout: "", stderr: workspaceUsage())
+        }
+        let workspace = URL(fileURLWithPath: arguments[0], isDirectory: true)
+        let flag = arguments[1]
+        do {
+            switch flag {
+            case "--init":
+                guard arguments.count == 3 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: workspaceUsage())
+                }
+                let result = try PakWorkspaceManager.initialize(
+                    workspace: workspace,
+                    initialPak: URL(fileURLWithPath: arguments[2])
+                )
+                return CLIResult(exitCode: 0, stdout: "initialized workspace with \(result.initialEntryCount) initial entries\n", stderr: "")
+
+            case "--add-mods":
+                let modPaths = Array(arguments.dropFirst(2))
+                guard !modPaths.isEmpty else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: workspaceUsage())
+                }
+                let result = try PakWorkspaceManager.addMods(
+                    workspace: workspace,
+                    modPaks: modPaths.map { URL(fileURLWithPath: $0) }
+                )
+                return CLIResult(exitCode: 0, stdout: "added \(result.addedMods.count) mod(s)\n", stderr: "")
+
+            case "--verify":
+                guard arguments.count == 2 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: workspaceUsage())
+                }
+                let result = try PakWorkspaceManager.verify(workspace: workspace)
+                return CLIResult(exitCode: 0, stdout: PakWorkspaceReporter.stdout(result: result, mode: "verified"), stderr: "")
+
+            case "--build":
+                guard arguments.count == 2 else {
+                    return CLIResult(exitCode: 2, stdout: "", stderr: workspaceUsage())
+                }
+                let result = try PakWorkspaceManager.build(workspace: workspace)
+                return CLIResult(exitCode: 0, stdout: PakWorkspaceReporter.stdout(result: result, mode: "built"), stderr: "")
+
+            default:
+                return CLIResult(exitCode: 2, stdout: "", stderr: workspaceUsage())
+            }
+        } catch {
+            return CLIResult(exitCode: 1, stdout: "", stderr: "\(error)\n")
+        }
+    }
+
+    private static func workspaceUsage() -> String {
+        """
+        Usage: snowrunner-tool workspace <workspace> --init <initial.pak>
+               snowrunner-tool workspace <workspace> --add-mods <mod.pak> [<mod.pak> ...]
+               snowrunner-tool workspace <workspace> --verify
+               snowrunner-tool workspace <workspace> --build
         """
     }
 
