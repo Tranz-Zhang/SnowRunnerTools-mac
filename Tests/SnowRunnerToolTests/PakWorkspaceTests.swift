@@ -110,4 +110,101 @@ final class PakWorkspaceTests: XCTestCase {
 
         XCTAssertThrowsError(try WorkspaceInitialLoadListBuilder.records(fromInitialDirectory: initial, preservingFrom: baseManifest))
     }
+
+    func testDirectoryModMappingReusesCachedCompressedPCTWhenUnchanged() throws {
+        let root = try temporaryDirectory(named: "workspace-directory-map")
+        let modRoot = root.appendingPathComponent("mods/pc", isDirectory: true)
+        let pct = makeSyntheticPCT(tableCount: 2)
+        try writeFile(root: modRoot, relativePath: "prebuild/textures/pct/demo.pct", data: pct)
+        let localExtraField = Data([0x01, 0x00, 0x02, 0x00, 0xAA, 0xBB])
+        let centralExtraField = Data([0x02, 0xF0, 0x04, 0x00, 1, 2, 3, 4])
+        let sourceTexture = try makeTexturePakWithRawDeflatedEntry(
+            internalName: "prebuild/textures/pct/demo.pct",
+            data: pct,
+            localExtraField: localExtraField,
+            centralExtraField: centralExtraField
+        )
+        let sourcePak = sourceTexture.url
+        let sha = ModArchiveMapper.sha256Hex(uncompressedPayload: pct)
+        let entries = [
+            PakWorkspaceSourceEntry(
+                sourceEntryName: "prebuild/textures/pct/demo.pct",
+                workspacePath: "mods/pc/prebuild/textures/pct/demo.pct",
+                sha256: sha
+            )
+        ]
+
+        let mapped = try ModArchiveMapper.mapDirectory(
+            at: modRoot,
+            archiveName: "pc.pak",
+            sourceCache: sourcePak,
+            sourceEntries: entries,
+            workspaceRoot: root
+        )
+
+        let pctEntry = try XCTUnwrap(mapped.first { $0.internalName == "[textures]\\pct\\demo.pct" })
+        XCTAssertNotNil(pctEntry.compressedPayload)
+        XCTAssertEqual(pctEntry.data, pct)
+        XCTAssertEqual(pctEntry.localExtraField, localExtraField)
+        XCTAssertEqual(pctEntry.centralExtraField, centralExtraField)
+        XCTAssertTrue(mapped.contains { $0.internalName == "[textures]\\pct\\demo.pct_header" })
+    }
+
+    func testDirectoryModMappingRecompressesEditedPCT() throws {
+        let root = try temporaryDirectory(named: "workspace-directory-map-edited")
+        let modRoot = root.appendingPathComponent("mods/pc", isDirectory: true)
+        let original = makeSyntheticPCT(tableCount: 2)
+        var edited = original
+        edited.append(0x7F)
+        try writeFile(root: modRoot, relativePath: "prebuild/textures/pct/demo.pct", data: edited)
+        let sourcePak = try makePak(named: "pc.pak", entries: [
+            "prebuild/textures/pct/demo.pct": original
+        ])
+        let entries = [
+            PakWorkspaceSourceEntry(
+                sourceEntryName: "prebuild/textures/pct/demo.pct",
+                workspacePath: "mods/pc/prebuild/textures/pct/demo.pct",
+                sha256: ModArchiveMapper.sha256Hex(uncompressedPayload: original)
+            )
+        ]
+
+        let mapped = try ModArchiveMapper.mapDirectory(
+            at: modRoot,
+            archiveName: "pc.pak",
+            sourceCache: sourcePak,
+            sourceEntries: entries,
+            workspaceRoot: root
+        )
+
+        let pctEntry = try XCTUnwrap(mapped.first { $0.internalName == "[textures]\\pct\\demo.pct" })
+        XCTAssertNil(pctEntry.compressedPayload)
+        XCTAssertEqual(pctEntry.data, edited)
+    }
+
+    func testDirectoryModMappingReportsInvalidPCTWithWorkspacePath() throws {
+        let root = try temporaryDirectory(named: "workspace-directory-map-invalid-pct")
+        let modRoot = root.appendingPathComponent("mods/pc", isDirectory: true)
+        let original = makeSyntheticPCT(tableCount: 2)
+        try writeFile(root: modRoot, relativePath: "prebuild/textures/pct/demo.pct", data: Data([0x01, 0x02]))
+        let sourcePak = try makePak(named: "pc.pak", entries: [
+            "prebuild/textures/pct/demo.pct": original
+        ])
+        let entries = [
+            PakWorkspaceSourceEntry(
+                sourceEntryName: "prebuild/textures/pct/demo.pct",
+                workspacePath: "mods/pc/prebuild/textures/pct/demo.pct",
+                sha256: ModArchiveMapper.sha256Hex(uncompressedPayload: original)
+            )
+        ]
+
+        XCTAssertThrowsError(try ModArchiveMapper.mapDirectory(
+            at: modRoot,
+            archiveName: "pc.pak",
+            sourceCache: sourcePak,
+            sourceEntries: entries,
+            workspaceRoot: root
+        )) { error in
+            XCTAssertTrue(String(describing: error).contains("mods/pc/prebuild/textures/pct/demo.pct"))
+        }
+    }
 }
