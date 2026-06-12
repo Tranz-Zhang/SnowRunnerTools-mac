@@ -21,7 +21,7 @@ The core need is:
 
 In scope:
 
-- A new `pak workspace` CLI command.
+- A new top-level `workspace` CLI command.
 - Source-preserving workspace layout:
   - `initial/` stores unpacked runtime `initial.pak` contents.
   - `mods/<name>/` stores unpacked mod package contents.
@@ -54,25 +54,25 @@ Out of scope for v1:
 Create or initialize the workspace from a base initial PAK:
 
 ```bash
-snowrunner-tool pak workspace path/to/workspace --initial /path/to/initial.pak
+snowrunner-tool workspace path/to/workspace --initial /path/to/initial.pak
 ```
 
 Add mod PAKs:
 
 ```bash
-snowrunner-tool pak workspace path/to/workspace --add-mods /path/to/mod1.pak /path/to/mod2.pak
+snowrunner-tool workspace path/to/workspace --add-mods /path/to/mod1.pak /path/to/mod2.pak
 ```
 
 Verify the current workspace:
 
 ```bash
-snowrunner-tool pak workspace path/to/workspace --verify
+snowrunner-tool workspace path/to/workspace --verify
 ```
 
 Build the current workspace:
 
 ```bash
-snowrunner-tool pak workspace path/to/workspace --build
+snowrunner-tool workspace path/to/workspace --build
 ```
 
 `--build` writes:
@@ -328,7 +328,7 @@ Sources/SnowRunnerTool/ModMerge/ModMergeReporter.swift
 ```
 
 The key refactor is to extract the current archive-only merge pipeline so both
-`pak merge-mod` and `pak workspace --build` call one shared core after their
+`pak merge-mod` and `workspace --build` call one shared core after their
 inputs have been converted to common sources.
 
 ## Error Handling
@@ -385,10 +385,10 @@ mapper tests beside existing `PakModArchiveTests` or create a focused
 Update README command examples after implementation:
 
 ```bash
-snowrunner-tool pak workspace /tmp/srt-workspace --initial /path/to/initial.pak
-snowrunner-tool pak workspace /tmp/srt-workspace --add-mods /path/to/mod1.pak /path/to/mod2.pak
-snowrunner-tool pak workspace /tmp/srt-workspace --verify
-snowrunner-tool pak workspace /tmp/srt-workspace --build
+snowrunner-tool workspace /tmp/srt-workspace --initial /path/to/initial.pak
+snowrunner-tool workspace /tmp/srt-workspace --add-mods /path/to/mod1.pak /path/to/mod2.pak
+snowrunner-tool workspace /tmp/srt-workspace --verify
+snowrunner-tool workspace /tmp/srt-workspace --build
 ```
 
 Document that:
