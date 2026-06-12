@@ -47,6 +47,8 @@ public enum PakWorkspaceManager {
                 try FileManager.default.removeItem(at: initialDirectory)
             }
             try FileManager.default.moveItem(at: tempInitial, to: initialDirectory)
+        } rollback: {
+            try? FileManager.default.removeItem(at: initialDirectory)
         }
         return PakWorkspaceInitResult(initialEntryCount: count)
     }
@@ -75,9 +77,6 @@ public enum PakWorkspaceManager {
         for pak in modPaks {
             let folderName = folderName(forPak: pak)
             let finalMod = PakWorkspacePaths.modDirectory(root: workspace, folderName: folderName)
-            if FileManager.default.fileExists(atPath: finalMod.path) {
-                throw PakWorkspaceError.modDirectoryAlreadyExists(finalMod.path)
-            }
             let tempMod = workspace.appendingPathComponent(".mod-\(folderName)-\(UUID().uuidString)", isDirectory: true)
             let tempCache = workspace.appendingPathComponent(".source-\(folderName)-\(UUID().uuidString).pak")
             let finalCache = PakWorkspacePaths.sourceCache(root: workspace, folderName: folderName)
@@ -100,8 +99,15 @@ public enum PakWorkspaceManager {
             try FileManager.default.createDirectory(at: PakWorkspacePaths.modsDirectory(root: workspace), withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: PakWorkspacePaths.sourcesDirectory(root: workspace), withIntermediateDirectories: true)
             for item in staged {
+                try? FileManager.default.removeItem(at: item.finalMod)
+                try? FileManager.default.removeItem(at: item.finalCache)
                 try FileManager.default.moveItem(at: item.tempMod, to: item.finalMod)
                 try FileManager.default.moveItem(at: item.tempCache, to: item.finalCache)
+            }
+        } rollback: {
+            for item in staged {
+                try? FileManager.default.removeItem(at: item.finalMod)
+                try? FileManager.default.removeItem(at: item.finalCache)
             }
         }
         return PakWorkspaceAddModsResult(addedMods: staged.map(\.mod))
@@ -201,14 +207,21 @@ public enum PakWorkspaceManager {
     private static func commitManifestLast(
         workspace: URL,
         manifest: PakWorkspaceManifest,
-        fileMoves: () throws -> Void
+        fileMoves: () throws -> Void,
+        rollback: () -> Void
     ) throws {
         let manifestURL = PakWorkspacePaths.manifestURL(root: workspace)
         let tempManifest = workspace.appendingPathComponent(".snowrunner-workspace-\(UUID().uuidString).json")
         let data = try JSONEncoder.pakWorkspace.encode(manifest)
         try data.write(to: tempManifest, options: .atomic)
-        try fileMoves()
-        try replaceItem(at: manifestURL, with: tempManifest)
+        do {
+            try fileMoves()
+            try replaceItem(at: manifestURL, with: tempManifest)
+        } catch {
+            rollback()
+            try? FileManager.default.removeItem(at: tempManifest)
+            throw error
+        }
     }
 
     private static func isNonEmptyDirectory(_ url: URL) throws -> Bool {

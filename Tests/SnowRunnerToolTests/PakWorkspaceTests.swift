@@ -347,6 +347,30 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
     }
 
+    func testWorkspaceAddModsIgnoresUnreferencedOrphanFolders() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-orphan")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        try writeFile(
+            root: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo"),
+            relativePath: "orphan.txt",
+            data: Data("orphan".utf8)
+        )
+        try writeFile(
+            root: PakWorkspacePaths.sourcesDirectory(root: workspace),
+            relativePath: "demo.pak",
+            data: Data("orphan".utf8)
+        )
+        let mod = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo").appendingPathComponent("orphan.txt").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo").appendingPathComponent("classes/trucks/demo.xml").path))
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods.map(\.folderName), ["demo"])
+    }
+
     func testWorkspaceVerifyWritesNoBuildOutput() throws {
         let workspace = try temporaryDirectory(named: "workspace-verify")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
