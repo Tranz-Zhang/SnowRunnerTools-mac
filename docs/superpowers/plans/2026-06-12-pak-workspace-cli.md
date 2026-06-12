@@ -488,6 +488,8 @@ git commit -m "feat: add workspace load-list builder"
 
 **Files:**
 - Modify: `Sources/SnowRunnerTool/ModMerge/ModArchiveMapper.swift`
+- Modify: `Tests/SnowRunnerToolTests/TestFixtures.swift`
+- Modify: `Tests/SnowRunnerToolTests/ModMergerTests.swift`
 - Test: `Tests/SnowRunnerToolTests/PakWorkspaceTests.swift`
 
 - [ ] **Step 1: Add directory mapper tests**
@@ -564,12 +566,39 @@ func testDirectoryModMappingRecompressesEditedPCT() throws {
     XCTAssertNil(pctEntry.compressedPayload)
     XCTAssertEqual(pctEntry.data, edited)
 }
+
+func testDirectoryModMappingReportsInvalidPCTWithWorkspacePath() throws {
+    let root = try temporaryDirectory(named: "workspace-directory-map-invalid-pct")
+    let modRoot = root.appendingPathComponent("mods/pc", isDirectory: true)
+    let original = makeSyntheticPCT(tableCount: 2)
+    try writeFile(root: modRoot, relativePath: "prebuild/textures/pct/demo.pct", data: Data([0x01, 0x02]))
+    let sourcePak = try makePak(named: "pc.pak", entries: [
+        "prebuild/textures/pct/demo.pct": original
+    ])
+    let entries = [
+        PakWorkspaceSourceEntry(
+            sourceEntryName: "prebuild/textures/pct/demo.pct",
+            workspacePath: "mods/pc/prebuild/textures/pct/demo.pct",
+            sha256: ModArchiveMapper.sha256Hex(uncompressedPayload: original)
+        )
+    ]
+
+    XCTAssertThrowsError(try ModArchiveMapper.mapDirectory(
+        at: modRoot,
+        archiveName: "pc.pak",
+        sourceCache: sourcePak,
+        sourceEntries: entries,
+        workspaceRoot: root
+    )) { error in
+        XCTAssertTrue(String(describing: error).contains("mods/pc/prebuild/textures/pct/demo.pct"))
+    }
+}
 ```
 
-Also extend the existing raw texture fixture helper used by merge tests so it accepts both ZIP metadata fields:
+Move the existing private raw texture fixture helper out of `ModMergerTests.swift` into shared test support, because `PakWorkspaceTests` must call it too. Put it in `Tests/SnowRunnerToolTests/TestFixtures.swift` next to `temporaryDirectory(...)`, add `import zlib` to `TestFixtures.swift`, remove the private copy from `ModMergerTests.swift`, and remove `import zlib` from `ModMergerTests.swift` if it becomes unused. Extend the helper signature so it accepts both ZIP metadata fields:
 
 ```swift
-private func makeTexturePakWithRawDeflatedEntry(
+func makeTexturePakWithRawDeflatedEntry(
     internalName: String,
     data: Data,
     localExtraField: Data = Data(),
@@ -577,7 +606,7 @@ private func makeTexturePakWithRawDeflatedEntry(
 ) throws -> (url: URL, compressedSize: UInt32)
 ```
 
-The helper must write `localExtraField` into the local file header and `centralExtraField` into the central directory header. Do not rely on `makePak(...)` for this test because it writes empty extra fields and cannot prove metadata preservation.
+The shared helper must write `localExtraField` into the local file header and `centralExtraField` into the central directory header. Do not rely on `makePak(...)` for the unchanged-PCT metadata test because it writes empty extra fields and cannot prove metadata preservation.
 
 - [ ] **Step 2: Run tests to verify failure**
 
@@ -635,7 +664,23 @@ public static func mapDirectory(
     var mapped: [ModMappedEntry] = []
     for source in sources {
         let payload = try source.readData()
-        let destinations = try map(source.internalName, role: role, archiveURL: URL(fileURLWithPath: archiveName), payload: payload)
+        let destinations = try {
+            do {
+                return try map(source.internalName, role: role, archiveURL: URL(fileURLWithPath: archiveName), payload: payload)
+            } catch ModMergeError.unsupportedModPath(let archive, let path) {
+                let sourceWorkspacePath = source.fileURL
+                    .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? source.internalName
+                let workspacePath = path == source.internalName ? sourceWorkspacePath : path
+                throw ModMergeError.unsupportedModPath(archive: archive, path: workspacePath)
+            } catch ModMergeError.invalidModArchive(let archive, let reason) {
+                let workspacePath = source.fileURL
+                    .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? source.internalName
+                throw ModMergeError.invalidModArchive(
+                    archive: archive,
+                    reason: reason.replacingOccurrences(of: source.internalName, with: workspacePath)
+                )
+            }
+        }()
         let unchanged = sourceHashByName[source.internalName] == sha256Hex(uncompressedPayload: payload)
         let cachedEntry = cacheByName[source.internalName]
         let compressedPayload: PakCompressedPayload?
@@ -689,7 +734,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SnowRunnerTool/ModMerge/ModArchiveMapper.swift Tests/SnowRunnerToolTests/PakWorkspaceTests.swift
+git add Sources/SnowRunnerTool/ModMerge/ModArchiveMapper.swift Tests/SnowRunnerToolTests/TestFixtures.swift Tests/SnowRunnerToolTests/ModMergerTests.swift Tests/SnowRunnerToolTests/PakWorkspaceTests.swift
 git commit -m "feat: map workspace mod directories"
 ```
 
@@ -1038,6 +1083,8 @@ func testWorkspaceAddModsRejectsInvalidModWithoutCommittingAnyMod() throws {
     XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "invalid").path))
     XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "valid").path))
     XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "invalid").path))
+    let workspaceNames = try FileManager.default.contentsOfDirectory(atPath: workspace.path)
+    XCTAssertFalse(workspaceNames.contains { $0.hasPrefix(".mod-") || $0.hasPrefix(".source-") })
     XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
 }
 ```
@@ -1124,6 +1171,13 @@ public enum PakWorkspaceManager {
         }
 
         var staged: [(mod: PakWorkspaceMod, tempMod: URL, finalMod: URL, tempCache: URL, finalCache: URL)] = []
+        defer {
+            for item in staged {
+                try? FileManager.default.removeItem(at: item.tempMod)
+                try? FileManager.default.removeItem(at: item.tempCache)
+            }
+        }
+
         for pak in modPaks {
             let folderName = folderName(forPak: pak)
             let finalMod = PakWorkspacePaths.modDirectory(root: workspace, folderName: folderName)
@@ -1145,13 +1199,6 @@ public enum PakWorkspaceManager {
                 entries: entries
             )
             staged.append((mod, tempMod, finalMod, tempCache, finalCache))
-        }
-
-        defer {
-            for item in staged {
-                try? FileManager.default.removeItem(at: item.tempMod)
-                try? FileManager.default.removeItem(at: item.tempCache)
-            }
         }
 
         manifest.mods.append(contentsOf: staged.map(\.mod))
