@@ -220,6 +220,9 @@ blocking under existing merge rules, the build fails with the full merge error.
 
 Keep archive and workspace semantics in the `SnowRunnerTool` library. The app
 should call library APIs directly instead of shelling out to `snowrunner-tool`.
+Those library APIs should be shared headless use-case APIs, not CLI APIs or GUI
+APIs. CLI parsing, stdout formatting, SwiftUI state, AppKit panels, and Finder
+integration must stay in adapter targets.
 
 ```mermaid
 flowchart LR
@@ -231,7 +234,7 @@ flowchart LR
   Core --> Build["ModMerger / PakWriter / PakVerifier"]
 ```
 
-Library additions:
+Library workspace use-case additions:
 
 - workspace summary loading,
 - set mod enabled state,
@@ -240,7 +243,14 @@ Library additions:
 - quick verify conflict detection,
 - build output/report path helpers if needed.
 
-App layer:
+CLI adapter:
+
+- `snowrunner-tool` stays a thin argument adapter,
+- converts command-line arguments into library calls,
+- converts structured results into stdout/stderr and exit codes,
+- owns CLI usage text and command syntax.
+
+App adapter:
 
 - `SnowRunnerModEditorApp`
 - `WorkspaceViewModel`
@@ -334,5 +344,7 @@ package if SwiftPM app bundling is sufficient for local use. If Finder-launch
 packaging is awkward through SwiftPM alone, introduce a minimal Xcode project
 or generator step that depends on the package product without moving core code.
 
-The GUI should not parse CLI stdout. Any detail needed by the UI should be
-returned as structured Swift values from the library.
+Neither adapter should parse the other adapter's output. The GUI should not
+parse CLI stdout, and the CLI should not depend on GUI view-model types. Any
+detail needed by either adapter should be returned as structured Swift values
+from the library.
