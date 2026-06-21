@@ -8,3 +8,4 @@ build/**/*.pak
 build/output/
 build/reports/
 workspace
+workspace_v2
