@@ -9,6 +9,7 @@ Primary implementation references:
 - PAK ZIP reader/writer: `Sources/SnowRunnerTool/Pak/`
 - `pak.load_list`: `Sources/SnowRunnerTool/LoadList/`
 - `initial.cache_block`: `Sources/SnowRunnerTool/CacheBlock/`
+- Mod merge semantics: `Sources/SnowRunnerTool/ModMerge/`
 - PCT companion headers: `Sources/SnowRunnerTool/ModMerge/PCTHeaderGenerator.swift`
 - Fixture archive: `fixtures/initial.pak`
 - PCT fixture: `fixtures/level_ru_02_03.pak`
@@ -82,6 +83,7 @@ Important `[media]\classes` groups in the fixture:
 | `wheels` | 36 | Wheel/tire definitions. |
 | `terrain_layers` | 31 | Terrain layer definitions. |
 | `cargo_types` | 25 | Cargo type definitions. |
+| `customization_presets` | 1 | Shared truck customization preset registry. |
 
 ### `[ssl_cache]`
 
@@ -295,6 +297,40 @@ Common cases:
 | Add new mesh | Yes | Needs a `mesh_loader` asset record. |
 | Add new PCT texture | Yes | Needs `pct_mr2_header` and `pct_faces` records for the `.pct_header` path. |
 | Add loose `[strings]\*.str` | No in current classifier | Loose strings are not load-list records. |
+
+### Mod Merge Semantics
+
+Supported mod archives are mapped into runtime namespaces before merging:
+
+| Mod path | Runtime path | Notes |
+| --- | --- | --- |
+| `classes/...` | `[media]\classes\...` | Class XML; load-listed as `cls_loader` when new. |
+| `prebuild/meshes/...` | `[meshes]\...` | Mesh payloads; load-listed as `mesh_loader`. |
+| `ui/textures/...` | `[textures]\...` | UI texture payloads for the texture output path. |
+| `texts/*.str` | `[strings]\*.str` | Loose string tables; not load-listed. |
+
+Most mapped entries are opaque payloads. If a mapped mod entry has the same
+runtime path as a base entry, `pak merge-mod` rejects it unless
+`--allow-overwrite` is supplied. With overwrite allowed, the mod payload
+replaces the base payload at that runtime path.
+
+Two file families have semantic merge rules because a file-level replacement
+would delete unrelated base-game data:
+
+| Runtime path | Merge key | Rule | Load-list effect |
+| --- | --- | --- | --- |
+| `[strings]\*.str` | string key before the first tab | Remove all base rows whose key appears in the mod table, then append mod rows. | None; loose strings are not load-listed. |
+| `[media]\classes\customization_presets\customization_preset.xml` | direct `<Truck Name="...">` child of root `<TruckSet>` | Preserve base truck order, replace matching truck blocks, append new mod truck blocks in mod order. If multiple mods define the same truck, later mod order wins. | Path remains one `cls_loader` class entry; existing path edits do not add a new load-list record. |
+
+The customization preset merge validates that the XML root is `<TruckSet>` and
+that every direct `<Truck>` child has a non-empty `Name` attribute. It treats
+the whole `<Truck>` block as the merge unit; it does not merge individual
+`<CustomizationPreset Id="...">` children.
+
+These semantic merges do not require `--allow-overwrite` when the semantic file
+path already exists in the base archive. They are still reported separately in
+CLI and Markdown merge reports, for example as `string table merges` and
+`customization preset merges`.
 
 ## 4. `initial.cache_block`
 
