@@ -296,6 +296,37 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
     }
 
+    func testWorkspaceCLIVerifyAndBuildReportCustomizationPresetMerges() throws {
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base", marker: "base")
+            ])
+        )
+        let workspace = try temporaryDirectory(named: "cli-workspace-customization")
+        let mod = try makePak(named: "preset.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "mod", marker: "mod")
+            ])
+        ])
+
+        let initResult = CLI.run(arguments: ["workspace", workspace.path, "--init", base.path])
+        XCTAssertEqual(initResult.exitCode, 0, initResult.stderr)
+
+        let addResult = CLI.run(arguments: ["workspace", workspace.path, "--add-mods", mod.path])
+        XCTAssertEqual(addResult.exitCode, 0, addResult.stderr)
+
+        let verifyResult = CLI.run(arguments: ["workspace", workspace.path, "--verify"])
+        XCTAssertEqual(verifyResult.exitCode, 0, verifyResult.stderr)
+        XCTAssertTrue(verifyResult.stdout.contains("customization preset merges: 1"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+
+        let buildResult = CLI.run(arguments: ["workspace", workspace.path, "--build"])
+        XCTAssertEqual(buildResult.exitCode, 0, buildResult.stderr)
+        XCTAssertTrue(buildResult.stdout.contains("customization preset merges: 1"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+    }
+
     func testWorkspaceCLIRejectsMissingArguments() {
         let result = CLI.run(arguments: ["workspace"])
 

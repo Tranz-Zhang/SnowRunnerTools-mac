@@ -382,6 +382,29 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildReport(root: workspace).path))
     }
 
+    func testWorkspaceVerifyMergesCustomizationPresetWithoutBuildOutput() throws {
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base", marker: "base")
+            ])
+        )
+        let workspace = try temporaryDirectory(named: "workspace-verify-customization")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let mod = try makePak(named: "preset.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "mod", marker: "mod")
+            ])
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+        let result = try PakWorkspaceManager.verify(workspace: workspace)
+
+        XCTAssertEqual(result.plan.customizationPresetMergeEntryCount, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildInitialPak(root: workspace).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.buildReport(root: workspace).path))
+    }
+
     func testWorkspaceBuildPublishesVerifiedOutputAndReport() throws {
         let workspace = try temporaryDirectory(named: "workspace-build")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
@@ -394,6 +417,35 @@ final class PakWorkspaceTests: XCTestCase {
         let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
         XCTAssertTrue(try PakVerifier.verifyBasic(archive).isEmpty)
         XCTAssertTrue(try PakVerifier.verifySnowPakLayout(archive).isEmpty)
+    }
+
+    func testWorkspaceBuildWritesMergedCustomizationPresetAndReport() throws {
+        let path = "[media]\\classes\\customization_presets\\customization_preset.xml"
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base", marker: "base")
+            ])
+        )
+        let workspace = try temporaryDirectory(named: "workspace-build-customization")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let mod = try makePak(named: "preset.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "mod", marker: "mod")
+            ])
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+        let result = try PakWorkspaceManager.build(workspace: workspace)
+
+        XCTAssertEqual(result.plan.customizationPresetMergeEntryCount, 1)
+        let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+        let entry = try XCTUnwrap(archive.entries.first { $0.name == path })
+        let text = decodedUTF8(try PakReader.readUncompressedPayload(entry: entry, in: archive))
+        XCTAssertTrue(text.contains("Name=\"base\""))
+        XCTAssertTrue(text.contains("Name=\"mod\""))
+        let report = try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8)
+        XCTAssertTrue(report.contains("- customization preset merges: 1"))
     }
 
     func testWorkspaceBuildWithNoModsIncludesEditedInitialDirectory() throws {

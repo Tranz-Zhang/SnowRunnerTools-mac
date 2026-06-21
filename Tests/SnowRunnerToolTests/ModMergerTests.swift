@@ -393,6 +393,48 @@ final class ModMergerTests: XCTestCase {
         """)
     }
 
+    func testMergerMergesCustomizationPresetCollisionWithoutAllowOverwrite() throws {
+        let path = "[media]\\classes\\customization_presets\\customization_preset.xml"
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base_only", marker: "base"),
+                truckXML(name: "replace_me", marker: "old")
+            ])
+        )
+        let mod = try makePak(named: "preset-mod.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "replace_me", marker: "new"),
+                truckXML(name: "mod_only", marker: "mod")
+            ])
+        ])
+        let output = try temporaryDirectory(named: "merge-customization-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: [mod],
+            options: ModMergeOptions(allowOverwrite: false)
+        )
+
+        XCTAssertEqual(result.plan.collisions, [])
+        XCTAssertEqual(result.plan.customizationPresetMergeEntryCount, 1)
+        XCTAssertEqual(result.plan.netNewOuterPakEntryCount, 0)
+        XCTAssertTrue(result.plan.loadListCandidateRecords.contains {
+            $0.manifestPath == "<media>\\classes\\customization_presets\\customization_preset.xml"
+        })
+
+        let archive = try PakReader.readArchive(at: output)
+        let entry = try XCTUnwrap(archive.entries.first { $0.name == path })
+        let text = decodedUTF8(try PakReader.readUncompressedPayload(entry: entry, in: archive))
+        XCTAssertTrue(text.contains("Name=\"base_only\""))
+        XCTAssertTrue(text.contains("Name=\"replace_me\""))
+        XCTAssertTrue(text.contains("Marker=\"new\""))
+        XCTAssertTrue(text.contains("Name=\"mod_only\""))
+        XCTAssertFalse(text.contains("Marker=\"old\""))
+    }
+
     func testMergerPreservesBaseKeysWhenMergingTextFixture() throws {
         guard FileManager.default.fileExists(atPath: TestFixtures.initialPak.path),
               let textPak = TestFixtures.optionalTextPak() else {
@@ -491,6 +533,7 @@ final class ModMergerTests: XCTestCase {
             netNewSharedTexturePakEntryCount: 2,
             sharedTextureCollisions: [],
             stringMergeEntryCount: 0,
+            customizationPresetMergeEntryCount: 0,
             duplicateIdenticalMappedNames: [],
             loadListSourceOverrides: [],
             loadListCandidateRecords: [

@@ -12,6 +12,7 @@ public struct ModMergePlan: Equatable {
     public let netNewSharedTexturePakEntryCount: Int
     public let sharedTextureCollisions: [String]
     public let stringMergeEntryCount: Int
+    public let customizationPresetMergeEntryCount: Int
     public let duplicateIdenticalMappedNames: [String]
     public let loadListSourceOverrides: [ModLoadListSourceOverride]
     public let loadListCandidateRecords: [LoadListRecord]

@@ -27,6 +27,89 @@ final class ModMergeCLITests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
     }
 
+    func testCLIMergeModDryRunReportsCustomizationPresetMerges() throws {
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base", marker: "base")
+            ])
+        )
+        let mod = try makePak(named: "preset-mod.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "mod", marker: "mod")
+            ])
+        ])
+        let output = try temporaryDirectory(named: "cli-merge-customization-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = CLI.run(arguments: [
+            "pak", "merge-mod", "--dry-run",
+            "--input-initial", base.path,
+            "--output-initial", output.path,
+            "--mods", mod.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.stderr)
+        XCTAssertTrue(result.stdout.contains("customization preset merges: 1"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+    }
+
+    func testCLIMergeModReportIncludesCustomizationPresetMerges() throws {
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base", marker: "base")
+            ])
+        )
+        let mod = try makePak(named: "preset-mod.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "mod", marker: "mod")
+            ])
+        ])
+        let output = try temporaryDirectory(named: "cli-merge-customization-output")
+            .appendingPathComponent("initial.merged.pak")
+        let report = try temporaryDirectory(named: "cli-merge-customization-report")
+            .appendingPathComponent("report.md")
+
+        let result = CLI.run(arguments: [
+            "pak", "merge-mod",
+            "--report", report.path,
+            "--input-initial", base.path,
+            "--output-initial", output.path,
+            "--mods", mod.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.stderr)
+        let reportText = try String(contentsOf: report, encoding: .utf8)
+        XCTAssertTrue(reportText.contains("- customization preset merges: 1"))
+    }
+
+    func testCLIMergeModAllowsCustomizationPresetCollisionWithoutAllowOverwrite() throws {
+        let base = try makeSyntheticInitialPak(
+            records: [],
+            customizationPresetData: customizationPresetData([
+                truckXML(name: "base", marker: "base")
+            ])
+        )
+        let mod = try makePak(named: "preset-mod.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "mod", marker: "mod")
+            ])
+        ])
+        let output = try temporaryDirectory(named: "cli-merge-customization-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = CLI.run(arguments: [
+            "pak", "merge-mod",
+            "--input-initial", base.path,
+            "--output-initial", output.path,
+            "--mods", mod.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.stderr)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
+    }
+
     func testCLIMergeModRejectsMissingArguments() {
         let result = CLI.run(arguments: ["pak", "merge-mod"])
 
@@ -189,10 +272,21 @@ final class ModMergeCLITests: XCTestCase {
 }
 
 func makeSyntheticInitialPak() throws -> URL {
-    try makeSyntheticInitialPak(records: [])
+    try makeSyntheticInitialPak(records: [], customizationPresetData: nil)
 }
 
-func makeSyntheticInitialPak(records extraRecords: [LoadListRecord]) throws -> URL {
+func makeSyntheticInitialPak(
+    records extraRecords: [LoadListRecord],
+    customizationPresetData: Data? = nil
+) throws -> URL {
+    let customizationRecord = customizationPresetData == nil ? [] : [
+        LoadListRecord(
+            manifestPath: "<media>\\classes\\customization_presets\\customization_preset.xml",
+            loaderType: "cls_loader",
+            sourcePak: "initial.pak",
+            phase: "CLASSES load"
+        )
+    ]
     let manifest = try LoadListBuilder.buildManifest(records: [
         LoadListRecord(
             manifestPath: "<media>\\classes\\trucks\\existing.xml",
@@ -200,11 +294,11 @@ func makeSyntheticInitialPak(records extraRecords: [LoadListRecord]) throws -> U
             sourcePak: "initial.pak",
             phase: "CLASSES load"
         )
-    ] + extraRecords)
+    ] + customizationRecord + extraRecords)
     let manifestData = try LoadListWriter.encodeManifest(manifest)
     let output = try temporaryDirectory(named: "synthetic-initial")
         .appendingPathComponent("initial.pak")
-    let sources = try PakDirectoryScanner.sortedPackSources([
+    var sources = [
         PakFileSource(internalName: LoadListConstants.manifestEntryName, data: manifestData),
         PakFileSource(internalName: "initial.cache_block", data: Data("cache".utf8)),
         PakFileSource(internalName: "[media]\\classes\\trucks\\existing.xml", data: Data("<Truck/>".utf8)),
@@ -213,7 +307,14 @@ func makeSyntheticInitialPak(records extraRecords: [LoadListRecord]) throws -> U
         BASE_KEY\t\t"Base"
         KEEP_KEY\t\t"Keep"
         """))
-    ])
+    ]
+    if let customizationPresetData {
+        sources.append(PakFileSource(
+            internalName: "[media]\\classes\\customization_presets\\customization_preset.xml",
+            data: customizationPresetData
+        ))
+    }
+    sources = try PakDirectoryScanner.sortedPackSources(sources)
     try PakWriter.writeArchive(fileSources: sources, to: output)
     return output
 }

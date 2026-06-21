@@ -27,11 +27,12 @@ public enum ModMerger {
         let baseManifest = try readBaseManifest(from: baseArchive)
 
         let rawMappedEntries = try modPaks.flatMap { try ModArchiveMapper.mapArchive(at: $0) }
-        let partitionedEntries = try partitionStringTableEntries(rawMappedEntries)
+        let partitionedEntries = try partitionSemanticMergeEntries(rawMappedEntries)
         let duplicateResolution = try resolveMappedDuplicates(partitionedEntries.regularEntries)
         let mappedEntries = duplicateResolution.entries
         let initialEntries = mappedEntries.filter { $0.targetArchive == .initial }
         let stringMergeEntries = partitionedEntries.stringMergeEntries
+        let customizationPresetMergeEntries = partitionedEntries.customizationPresetMergeEntries
         let textureEntries = mappedEntries.filter { $0.targetArchive == .sharedTexturesBase }
         let sharedTextureEntries = mappedEntries.filter { $0.targetArchive == .sharedTextures }
         let experimentalTextureEntries = try combinedExperimentalTextureEntries(
@@ -87,9 +88,10 @@ public enum ModMerger {
         } else {
             textureSourcePakOverride = experimentalModTexturesOutputURL?.lastPathComponent
         }
+        let overlayMappedEntries = mappedEntries + customizationPresetMergeEntries
         let overlay = try ModLoadListOverlay.overlay(
             baseManifest: baseManifest,
-            mappedEntries: mappedEntries,
+            mappedEntries: overlayMappedEntries,
             textureSourcePakOverride: textureSourcePakOverride
         )
         let loadListData = try LoadListWriter.encodeManifest(overlay.manifest)
@@ -98,7 +100,8 @@ public enum ModMerger {
             mappedModEntryCount: rawMappedEntries.count,
             netNewOuterPakEntryCount: initialEntries.filter { !baseNames.contains($0.internalName) }.count
                 + inlineTextureEntries.filter { !baseNames.contains($0.internalName) }.count
-                + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
+                + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count
+                + customizationPresetMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
             collisions: collisions,
             textureBaseEntryCount: textureArchive?.entries.count ?? 0,
             netNewTexturePakEntryCount: textureEntries.count - textureCollisions.count,
@@ -107,6 +110,7 @@ public enum ModMerger {
             netNewSharedTexturePakEntryCount: sharedTextureEntries.count - sharedTextureCollisions.count,
             sharedTextureCollisions: sharedTextureCollisions,
             stringMergeEntryCount: stringMergeEntries.count,
+            customizationPresetMergeEntryCount: customizationPresetMergeEntries.count,
             duplicateIdenticalMappedNames: duplicateResolution.duplicateIdenticalNames,
             loadListSourceOverrides: overlay.sourceOverrides,
             loadListCandidateRecords: overlay.modManagedRecords,
@@ -132,6 +136,7 @@ public enum ModMerger {
             baseArchive: baseArchive,
             mappedEntries: initialEntries + inlineTextureEntries,
             stringMergeEntries: stringMergeEntries,
+            customizationPresetMergeEntries: customizationPresetMergeEntries,
             loadListData: loadListData,
             requirePakLoadList: true
         )
@@ -235,7 +240,7 @@ public enum ModMerger {
     ) throws -> ModMergeResult {
         let initialSources = try PakDirectoryScanner.scan(rootDirectory: initialDirectory)
         let baseNames = Set(initialSources.map(\.internalName))
-        let partitionedEntries = try partitionStringTableEntries(rawMappedEntries)
+        let partitionedEntries = try partitionSemanticMergeEntries(rawMappedEntries)
         let duplicateResolution = try resolveMappedDuplicates(partitionedEntries.regularEntries)
         let mappedEntries = duplicateResolution.entries
         let initialEntries = mappedEntries.filter { $0.targetArchive == .initial }
@@ -251,9 +256,11 @@ public enum ModMerger {
             .filter { baseNames.contains($0) }
             .sorted()
         let stringMergeEntries = partitionedEntries.stringMergeEntries
+        let customizationPresetMergeEntries = partitionedEntries.customizationPresetMergeEntries
+        let overlayMappedEntries = mappedEntries + customizationPresetMergeEntries
         let overlay = try ModLoadListOverlay.overlay(
             baseManifest: baseManifest,
-            mappedEntries: mappedEntries,
+            mappedEntries: overlayMappedEntries,
             textureSourcePakOverride: "initial.pak"
         )
         let loadListData = try LoadListWriter.encodeManifest(overlay.manifest)
@@ -262,7 +269,8 @@ public enum ModMerger {
             mappedModEntryCount: rawMappedEntries.count,
             netNewOuterPakEntryCount: initialEntries.filter { !baseNames.contains($0.internalName) }.count
                 + inlineTextureEntries.filter { !baseNames.contains($0.internalName) }.count
-                + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
+                + stringMergeEntries.filter { !baseNames.contains($0.internalName) }.count
+                + customizationPresetMergeEntries.filter { !baseNames.contains($0.internalName) }.count,
             collisions: collisions,
             textureBaseEntryCount: 0,
             netNewTexturePakEntryCount: 0,
@@ -271,6 +279,7 @@ public enum ModMerger {
             netNewSharedTexturePakEntryCount: inlineTextureEntries.count - inlineTextureCollisions.count,
             sharedTextureCollisions: inlineTextureCollisions,
             stringMergeEntryCount: stringMergeEntries.count,
+            customizationPresetMergeEntryCount: customizationPresetMergeEntries.count,
             duplicateIdenticalMappedNames: duplicateResolution.duplicateIdenticalNames,
             loadListSourceOverrides: overlay.sourceOverrides,
             loadListCandidateRecords: overlay.modManagedRecords,
@@ -281,6 +290,7 @@ public enum ModMerger {
             baseSources: initialSources,
             mappedEntries: initialEntries + inlineTextureEntries,
             stringMergeEntries: stringMergeEntries,
+            customizationPresetMergeEntries: customizationPresetMergeEntries,
             loadListData: loadListData,
             requirePakLoadList: true
         )
@@ -359,42 +369,83 @@ public enum ModMerger {
         )
     }
 
-    private static func partitionStringTableEntries(
+    private static func partitionSemanticMergeEntries(
         _ entries: [ModMappedEntry]
-    ) throws -> (regularEntries: [ModMappedEntry], stringMergeEntries: [ModMappedEntry]) {
+    ) throws -> (
+        regularEntries: [ModMappedEntry],
+        stringMergeEntries: [ModMappedEntry],
+        customizationPresetMergeEntries: [ModMappedEntry]
+    ) {
         var regularEntries: [ModMappedEntry] = []
         var stringEntriesByName: [String: ModMappedEntry] = [:]
         var stringEntryNames: [String] = []
+        var customizationEntriesByName: [String: ModMappedEntry] = [:]
+        var customizationEntryNames: [String] = []
 
         for entry in entries {
-            guard isStringMergeEntry(entry) else {
-                regularEntries.append(entry)
+            if isStringMergeEntry(entry) {
+                if let existing = stringEntriesByName[entry.internalName] {
+                    let mergedData = try ModStringTable.merge(
+                        baseData: existing.data,
+                        modData: entry.data,
+                        path: entry.internalName
+                    )
+                    stringEntriesByName[entry.internalName] = ModMappedEntry(
+                        archiveURL: existing.archiveURL,
+                        originalName: existing.originalName,
+                        internalName: existing.internalName,
+                        targetArchive: existing.targetArchive,
+                        data: mergedData
+                    )
+                } else {
+                    stringEntryNames.append(entry.internalName)
+                    stringEntriesByName[entry.internalName] = entry
+                }
                 continue
             }
 
-            if let existing = stringEntriesByName[entry.internalName] {
-                let mergedData = try ModStringTable.merge(
-                    baseData: existing.data,
-                    modData: entry.data,
-                    path: entry.internalName
-                )
-                stringEntriesByName[entry.internalName] = ModMappedEntry(
-                    archiveURL: existing.archiveURL,
-                    originalName: existing.originalName,
-                    internalName: existing.internalName,
-                    targetArchive: existing.targetArchive,
-                    data: mergedData
-                )
-            } else {
-                stringEntryNames.append(entry.internalName)
-                stringEntriesByName[entry.internalName] = entry
+            if isCustomizationPresetMergeEntry(entry) {
+                if let existing = customizationEntriesByName[entry.internalName] {
+                    let mergedData = try ModCustomizationPreset.merge(
+                        baseData: existing.data,
+                        modData: entry.data,
+                        path: entry.internalName
+                    )
+                    customizationEntriesByName[entry.internalName] = ModMappedEntry(
+                        archiveURL: existing.archiveURL,
+                        originalName: existing.originalName,
+                        internalName: existing.internalName,
+                        targetArchive: existing.targetArchive,
+                        data: mergedData
+                    )
+                } else {
+                    let mergedData = try ModCustomizationPreset.merge(
+                        baseData: Data("<TruckSet/>".utf8),
+                        modData: entry.data,
+                        path: entry.internalName
+                    )
+                    customizationEntryNames.append(entry.internalName)
+                    customizationEntriesByName[entry.internalName] = ModMappedEntry(
+                        archiveURL: entry.archiveURL,
+                        originalName: entry.originalName,
+                        internalName: entry.internalName,
+                        targetArchive: entry.targetArchive,
+                        data: mergedData
+                    )
+                }
+                continue
             }
+
+            regularEntries.append(entry)
         }
 
         let stringMergeEntries = stringEntryNames
             .compactMap { stringEntriesByName[$0] }
             .sorted { $0.internalName < $1.internalName }
-        return (regularEntries, stringMergeEntries)
+        let customizationPresetMergeEntries = customizationEntryNames
+            .compactMap { customizationEntriesByName[$0] }
+            .sorted { $0.internalName < $1.internalName }
+        return (regularEntries, stringMergeEntries, customizationPresetMergeEntries)
     }
 
     private static func combinedExperimentalTextureEntries(
@@ -421,17 +472,29 @@ public enum ModMerger {
             && entry.internalName.hasSuffix(".str")
     }
 
+    private static func isCustomizationPresetMergeEntry(_ entry: ModMappedEntry) -> Bool {
+        entry.targetArchive == .initial
+            && entry.internalName == ModCustomizationPreset.internalName
+    }
+
     private static func buildMergedSources(
         baseArchive: PakArchive,
         mappedEntries: [ModMappedEntry],
         stringMergeEntries: [ModMappedEntry] = [],
+        customizationPresetMergeEntries: [ModMappedEntry] = [],
         loadListData: Data?,
         requirePakLoadList: Bool
     ) throws -> [PakFileSource] {
         let mappedByName = Dictionary(uniqueKeysWithValues: mappedEntries.map { ($0.internalName, $0) })
         let stringMergeByName = Dictionary(uniqueKeysWithValues: stringMergeEntries.map { ($0.internalName, $0) })
+        let customizationPresetMergeByName = Dictionary(uniqueKeysWithValues: customizationPresetMergeEntries.map { ($0.internalName, $0) })
         var sources: [PakFileSource] = []
-        sources.reserveCapacity(baseArchive.entries.count + mappedEntries.count + stringMergeEntries.count)
+        sources.reserveCapacity(
+            baseArchive.entries.count
+                + mappedEntries.count
+                + stringMergeEntries.count
+                + customizationPresetMergeEntries.count
+        )
 
         for entry in baseArchive.entries {
             if entry.name == LoadListConstants.manifestEntryName, let loadListData {
@@ -452,6 +515,15 @@ public enum ModMerger {
                 sources.append(PakFileSource(internalName: entry.name, data: mergedPayload))
                 continue
             }
+            if let customizationPresetMerge = customizationPresetMergeByName[entry.name] {
+                let mergedPayload = try ModCustomizationPreset.merge(
+                    baseData: payload,
+                    modData: customizationPresetMerge.data,
+                    path: entry.name
+                )
+                sources.append(PakFileSource(internalName: entry.name, data: mergedPayload))
+                continue
+            }
             sources.append(PakFileSource(internalName: entry.name, data: payload))
         }
 
@@ -462,6 +534,9 @@ public enum ModMerger {
         for stringMerge in stringMergeEntries where !baseNames.contains(stringMerge.internalName) {
             sources.append(PakFileSource(internalName: stringMerge.internalName, data: stringMerge.data))
         }
+        for customizationPresetMerge in customizationPresetMergeEntries where !baseNames.contains(customizationPresetMerge.internalName) {
+            sources.append(PakFileSource(internalName: customizationPresetMerge.internalName, data: customizationPresetMerge.data))
+        }
 
         return try PakDirectoryScanner.sortedPackSources(sources, requirePakLoadList: requirePakLoadList)
     }
@@ -470,13 +545,20 @@ public enum ModMerger {
         baseSources: [PakFileSource],
         mappedEntries: [ModMappedEntry],
         stringMergeEntries: [ModMappedEntry] = [],
+        customizationPresetMergeEntries: [ModMappedEntry] = [],
         loadListData: Data?,
         requirePakLoadList: Bool
     ) throws -> [PakFileSource] {
         let mappedByName = Dictionary(uniqueKeysWithValues: mappedEntries.map { ($0.internalName, $0) })
         let stringMergeByName = Dictionary(uniqueKeysWithValues: stringMergeEntries.map { ($0.internalName, $0) })
+        let customizationPresetMergeByName = Dictionary(uniqueKeysWithValues: customizationPresetMergeEntries.map { ($0.internalName, $0) })
         var sources: [PakFileSource] = []
-        sources.reserveCapacity(baseSources.count + mappedEntries.count + stringMergeEntries.count)
+        sources.reserveCapacity(
+            baseSources.count
+                + mappedEntries.count
+                + stringMergeEntries.count
+                + customizationPresetMergeEntries.count
+        )
 
         for base in baseSources {
             if base.internalName == LoadListConstants.manifestEntryName, let loadListData {
@@ -497,6 +579,15 @@ public enum ModMerger {
                 sources.append(PakFileSource(internalName: base.internalName, data: mergedPayload))
                 continue
             }
+            if let customizationPresetMerge = customizationPresetMergeByName[base.internalName] {
+                let mergedPayload = try ModCustomizationPreset.merge(
+                    baseData: payload,
+                    modData: customizationPresetMerge.data,
+                    path: base.internalName
+                )
+                sources.append(PakFileSource(internalName: base.internalName, data: mergedPayload))
+                continue
+            }
             sources.append(PakFileSource(
                 internalName: base.internalName,
                 data: payload,
@@ -511,6 +602,9 @@ public enum ModMerger {
         }
         for stringMerge in stringMergeEntries where !baseNames.contains(stringMerge.internalName) {
             sources.append(PakFileSource(internalName: stringMerge.internalName, data: stringMerge.data))
+        }
+        for customizationPresetMerge in customizationPresetMergeEntries where !baseNames.contains(customizationPresetMerge.internalName) {
+            sources.append(PakFileSource(internalName: customizationPresetMerge.internalName, data: customizationPresetMerge.data))
         }
 
         return try PakDirectoryScanner.sortedPackSources(sources, requirePakLoadList: requirePakLoadList)
