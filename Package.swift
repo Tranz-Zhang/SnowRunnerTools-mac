@@ -33,6 +33,10 @@ let package = Package(
         .testTarget(
             name: "SnowRunnerToolTests",
             dependencies: ["SnowRunnerTool"]
+        ),
+        .testTarget(
+            name: "SnowRunnerModEditorTests",
+            dependencies: ["SnowRunnerModEditorCore", "SnowRunnerTool"]
         )
     ]
 )
