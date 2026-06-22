@@ -2,42 +2,37 @@
 import PackageDescription
 
 let package = Package(
-    name: "SnowRunnerTool",
+    name: "SnowRunnerTools",
     platforms: [
         .macOS(.v15)
     ],
     products: [
-        .executable(name: "snowrunner-tool", targets: ["snowrunner-tool"]),
+        .executable(name: "snowrunner-tool", targets: ["SnowRunnerToolCLI"]),
         .executable(name: "SnowRunnerModEditor", targets: ["SnowRunnerModEditor"]),
-        .library(name: "SnowRunnerModEditorCore", targets: ["SnowRunnerModEditorCore"]),
-        .library(name: "SnowRunnerTool", targets: ["SnowRunnerTool"])
+        .library(name: "SnowRunnerCore", targets: ["SnowRunnerCore"])
     ],
     targets: [
         .target(
-            name: "SnowRunnerTool",
+            name: "SnowRunnerCore",
             linkerSettings: [
                 .linkedLibrary("z")
             ]
         ),
         .executableTarget(
-            name: "snowrunner-tool",
-            dependencies: ["SnowRunnerTool"]
+            name: "SnowRunnerToolCLI",
+            dependencies: ["SnowRunnerCore"]
         ),
         .executableTarget(
             name: "SnowRunnerModEditor",
-            dependencies: ["SnowRunnerModEditorCore"]
-        ),
-        .target(
-            name: "SnowRunnerModEditorCore",
-            dependencies: ["SnowRunnerTool"]
+            dependencies: ["SnowRunnerCore"]
         ),
         .testTarget(
-            name: "SnowRunnerToolTests",
-            dependencies: ["SnowRunnerTool"]
+            name: "SnowRunnerCoreTests",
+            dependencies: ["SnowRunnerCore"]
         ),
         .testTarget(
             name: "SnowRunnerModEditorTests",
-            dependencies: ["SnowRunnerModEditorCore", "SnowRunnerTool"]
+            dependencies: ["SnowRunnerModEditor", "SnowRunnerCore"]
         )
     ]
 )

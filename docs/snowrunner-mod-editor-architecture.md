@@ -15,25 +15,26 @@ editor. Its job is to make the existing workspace workflow visible and safer:
 
 Manual edits still happen outside the app, usually in Finder or a dedicated
 editor, under `initial/` and `mods/`. The app operates the workspace and
-delegates all archive semantics to the shared `SnowRunnerTool` library.
+delegates all archive semantics to the shared `SnowRunnerCore` library.
 
 ## Targets And Boundaries
 
 The package has three relevant production targets:
 
-- `SnowRunnerModEditor`: executable SwiftUI app target. It owns app launch and
-  scene composition.
-- `SnowRunnerModEditorCore`: GUI core target. It owns SwiftUI views,
-  view-model state, AppKit panel adapters, Finder helpers, and the app service
-  adapter.
-- `SnowRunnerTool`: shared library target. It owns PAK reading, writing,
+- `SnowRunnerModEditor`: executable SwiftUI app target. It owns app launch,
+  scene composition, SwiftUI views, view-model state, AppKit panel adapters,
+  Finder helpers, and the app service adapter.
+- `SnowRunnerCore`: shared library target. It owns PAK reading, writing,
   verification, workspace mutation, mod mapping, merge planning, and build
   publishing.
+- `SnowRunnerToolCLI`: CLI executable target behind the `snowrunner-tool`
+  product. It owns process entry, argument handling, and stdout/stderr
+  formatting.
 
 Keep these boundaries sharp. SwiftUI and AppKit code should stay in
-`SnowRunnerModEditor` or `SnowRunnerModEditorCore`. Workspace and archive
-semantics should stay in `SnowRunnerTool`. The app should call library APIs
-directly, not shell out to `snowrunner-tool`.
+`SnowRunnerModEditor`. Workspace and archive semantics should stay in
+`SnowRunnerCore`. The app should call library APIs directly, not shell out to
+`snowrunner-tool`.
 
 The command-line executable remains a separate adapter over the same library.
 This keeps CLI parsing and stdout formatting independent from GUI state.
@@ -300,25 +301,25 @@ build.
 
 - `Sources/SnowRunnerModEditor/SnowRunnerModEditorApp.swift`
   - App entry point and root screen switch.
-- `Sources/SnowRunnerModEditorCore/LaunchWorkspaceView.swift`
+- `Sources/SnowRunnerModEditor/LaunchWorkspaceView.swift`
   - Launch screen for creating or opening a workspace.
-- `Sources/SnowRunnerModEditorCore/WorkspaceOperationView.swift`
+- `Sources/SnowRunnerModEditor/WorkspaceOperationView.swift`
   - Workspace screen for mods, quick verify, and build actions.
-- `Sources/SnowRunnerModEditorCore/WorkspaceViewModel.swift`
+- `Sources/SnowRunnerModEditor/WorkspaceViewModel.swift`
   - Main app state machine and async operation coordination.
-- `Sources/SnowRunnerModEditorCore/WorkspaceAppService.swift`
+- `Sources/SnowRunnerModEditor/WorkspaceAppService.swift`
   - Adapter from main-actor app intents to detached workspace library work.
-- `Sources/SnowRunnerModEditorCore/AppFilePanels.swift`
+- `Sources/SnowRunnerModEditor/AppFilePanels.swift`
   - AppKit open-panel wrapper.
-- `Sources/SnowRunnerModEditorCore/FinderActions.swift`
+- `Sources/SnowRunnerModEditor/FinderActions.swift`
   - Finder reveal/open wrapper.
-- `Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceManifest.swift`
+- `Sources/SnowRunnerCore/PakWorkspace/PakWorkspaceManifest.swift`
   - Workspace manifest, paths, JSON encoder/decoder policy.
-- `Sources/SnowRunnerTool/PakWorkspace/PakWorkspaceManager.swift`
+- `Sources/SnowRunnerCore/PakWorkspace/PakWorkspaceManager.swift`
   - Headless workspace use cases and transaction-sensitive mutations.
 - `Tests/SnowRunnerModEditorTests/WorkspaceViewModelTests.swift`
   - View-model unit tests with a fake service.
-- `Tests/SnowRunnerToolTests/PakWorkspaceTests.swift`
+- `Tests/SnowRunnerCoreTests/PakWorkspaceTests.swift`
   - Library-level workspace behavior tests.
 
 ## Extension Guidelines

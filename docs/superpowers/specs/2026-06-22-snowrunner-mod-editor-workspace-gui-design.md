@@ -218,7 +218,7 @@ blocking under existing merge rules, the build fails with the full merge error.
 
 ## Architecture
 
-Keep archive and workspace semantics in the `SnowRunnerTool` library. The app
+Keep archive and workspace semantics in the `SnowRunnerCore` library. The app
 should call library APIs directly instead of shelling out to `snowrunner-tool`.
 Those library APIs should be shared headless use-case APIs, not CLI APIs or GUI
 APIs. CLI parsing, stdout formatting, SwiftUI state, AppKit panels, and Finder
@@ -228,7 +228,7 @@ integration must stay in adapter targets.
 flowchart LR
   App["SnowRunnerModEditor SwiftUI App"] --> VM["WorkspaceViewModel"]
   VM --> Service["WorkspaceAppService"]
-  Service --> Core["SnowRunnerTool Library"]
+  Service --> Core["SnowRunnerCore Library"]
   Core --> Workspace["PakWorkspaceManager"]
   Core --> Mapping["ModArchiveMapper"]
   Core --> Build["ModMerger / PakWriter / PakVerifier"]
@@ -338,11 +338,11 @@ Manual app smoke checklist:
 
 ## Implementation Notes
 
-The existing package is SwiftPM-first and already exposes a `SnowRunnerTool`
-library. The shortest implementation path is to add a SwiftUI app target to the
-package if SwiftPM app bundling is sufficient for local use. If Finder-launch
+The package is SwiftPM-first and exposes `SnowRunnerCore` as the shared
+headless library. `SnowRunnerModEditor` is the combined SwiftUI executable
+target for app launch, views, and view-model code. If Finder-launch
 packaging is awkward through SwiftPM alone, introduce a minimal Xcode project
-or generator step that depends on the package product without moving core code.
+or generator step that builds the existing app product without moving core code.
 
 Neither adapter should parse the other adapter's output. The GUI should not
 parse CLI stdout, and the CLI should not depend on GUI view-model types. Any

@@ -1,6 +1,6 @@
 import Foundation
-@preconcurrency @testable import SnowRunnerTool
-@testable import SnowRunnerModEditorCore
+@preconcurrency @testable import SnowRunnerCore
+@testable import SnowRunnerModEditor
 import XCTest
 
 @MainActor

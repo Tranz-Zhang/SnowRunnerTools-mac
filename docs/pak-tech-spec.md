@@ -6,11 +6,11 @@ round-trips, and what remains inferred.
 
 Primary implementation references:
 
-- PAK ZIP reader/writer: `Sources/SnowRunnerTool/Pak/`
-- `pak.load_list`: `Sources/SnowRunnerTool/LoadList/`
-- `initial.cache_block`: `Sources/SnowRunnerTool/CacheBlock/`
-- Mod merge semantics: `Sources/SnowRunnerTool/ModMerge/`
-- PCT companion headers: `Sources/SnowRunnerTool/ModMerge/PCTHeaderGenerator.swift`
+- PAK ZIP reader/writer: `Sources/SnowRunnerCore/Pak/`
+- `pak.load_list`: `Sources/SnowRunnerCore/LoadList/`
+- `initial.cache_block`: `Sources/SnowRunnerCore/CacheBlock/`
+- Mod merge semantics: `Sources/SnowRunnerCore/ModMerge/`
+- PCT companion headers: `Sources/SnowRunnerCore/ModMerge/PCTHeaderGenerator.swift`
 - Fixture archive: `fixtures/initial.pak`
 - PCT fixture: `fixtures/level_ru_02_03.pak`
 
