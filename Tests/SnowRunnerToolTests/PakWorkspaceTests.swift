@@ -423,6 +423,24 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods.map(\.folderName), ["demo"])
     }
 
+    func testWorkspaceSummaryReportsEnabledAndDisabledMods() throws {
+        let workspace = try temporaryDirectory(named: "workspace-summary")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let active = try makePak(named: "active.pak", entries: ["classes/trucks/active.xml": Data("<Truck/>".utf8)])
+        let disabled = try makePak(named: "disabled.pak", entries: ["classes/trucks/disabled.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [active, disabled])
+        try PakWorkspaceManager.setModEnabled(workspace: workspace, folderName: "disabled", enabled: false)
+
+        let summary = try PakWorkspaceManager.summary(workspace: workspace)
+
+        XCTAssertEqual(summary.workspace, workspace)
+        XCTAssertEqual(summary.initialSourcePath, TestFixtures.initialPak.path)
+        XCTAssertEqual(summary.mods.map(\.folderName), ["active", "disabled"])
+        XCTAssertEqual(summary.mods.map(\.enabled), [true, false])
+        XCTAssertEqual(summary.buildInitialPak, PakWorkspacePaths.buildInitialPak(root: workspace))
+        XCTAssertEqual(summary.buildReport, PakWorkspacePaths.buildReport(root: workspace))
+    }
+
     func testWorkspaceVerifyWritesNoBuildOutput() throws {
         let workspace = try temporaryDirectory(named: "workspace-verify")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
@@ -552,6 +570,44 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertThrowsError(try PakWorkspaceManager.verify(workspace: workspace)) { error in
             XCTAssertTrue(String(describing: error).contains("[media]\\classes\\trucks\\same.xml"))
         }
+    }
+
+    func testWorkspaceVerifyIgnoresDisabledConflictingMod() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-verify-disabled-conflict")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.setModEnabled(workspace: workspace, folderName: "second", enabled: false)
+
+        let result = try PakWorkspaceManager.verify(workspace: workspace)
+
+        XCTAssertGreaterThan(result.plan.mappedModEntryCount, 0)
+    }
+
+    func testWorkspaceBuildIgnoresDisabledModPayload() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-build-disabled")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let active = try makePak(named: "active.pak", entries: [
+            "classes/trucks/active.xml": Data("<Truck id=\"active\"/>".utf8)
+        ])
+        let disabled = try makePak(named: "disabled.pak", entries: [
+            "classes/trucks/disabled.xml": Data("<Truck id=\"disabled\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [active, disabled])
+        try PakWorkspaceManager.setModEnabled(workspace: workspace, folderName: "disabled", enabled: false)
+
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+
+        let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+        XCTAssertTrue(archive.entries.contains { $0.name == "[media]\\classes\\trucks\\active.xml" })
+        XCTAssertFalse(archive.entries.contains { $0.name == "[media]\\classes\\trucks\\disabled.xml" })
     }
 
     func testWorkspaceBuildFailsWhenSourceCacheMissing() throws {

@@ -7,6 +7,7 @@ public enum PakWorkspaceError: Error, CustomStringConvertible, Equatable {
     case initialDirectoryAlreadyExists(String)
     case modDirectoryAlreadyExists(String)
     case duplicateModFolderName(String)
+    case modNotFound(String)
     case missingModDirectory(String)
     case missingSourceCache(String)
     case invalidCommand(String)
@@ -26,6 +27,8 @@ public enum PakWorkspaceError: Error, CustomStringConvertible, Equatable {
             return "Workspace mod directory already exists: \(path)"
         case let .duplicateModFolderName(name):
             return "Duplicate workspace mod folder name: \(name)"
+        case let .modNotFound(folderName):
+            return "Workspace manifest has no mod named: \(folderName)"
         case let .missingModDirectory(path):
             return "Workspace manifest references missing mod directory: \(path)"
         case let .missingSourceCache(path):

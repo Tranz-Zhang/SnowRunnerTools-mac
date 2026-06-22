@@ -8,6 +8,54 @@ public struct PakWorkspaceAddModsResult: Equatable {
     public let addedMods: [PakWorkspaceMod]
 }
 
+public struct PakWorkspaceSummary: Equatable {
+    public var workspace: URL
+    public var initialSourcePath: String
+    public var mods: [PakWorkspaceModSummary]
+    public var buildInitialPak: URL
+    public var buildReport: URL
+
+    public init(
+        workspace: URL,
+        initialSourcePath: String,
+        mods: [PakWorkspaceModSummary],
+        buildInitialPak: URL,
+        buildReport: URL
+    ) {
+        self.workspace = workspace
+        self.initialSourcePath = initialSourcePath
+        self.mods = mods
+        self.buildInitialPak = buildInitialPak
+        self.buildReport = buildReport
+    }
+}
+
+public struct PakWorkspaceModSummary: Equatable, Identifiable {
+    public var id: String { folderName }
+    public var folderName: String
+    public var archiveName: String
+    public var sourcePath: String
+    public var modDirectory: URL
+    public var sourceCache: URL
+    public var enabled: Bool
+
+    public init(
+        folderName: String,
+        archiveName: String,
+        sourcePath: String,
+        modDirectory: URL,
+        sourceCache: URL,
+        enabled: Bool
+    ) {
+        self.folderName = folderName
+        self.archiveName = archiveName
+        self.sourcePath = sourcePath
+        self.modDirectory = modDirectory
+        self.sourceCache = sourceCache
+        self.enabled = enabled
+    }
+}
+
 public enum PakWorkspaceManager {
     public static func loadManifest(workspace: URL) throws -> PakWorkspaceManifest {
         let url = PakWorkspacePaths.manifestURL(root: workspace)
@@ -19,6 +67,46 @@ public enum PakWorkspaceManager {
             throw PakWorkspaceError.unsupportedManifestVersion(manifest.version)
         }
         return manifest
+    }
+
+    public static func summary(workspace: URL) throws -> PakWorkspaceSummary {
+        let manifest = try loadManifest(workspace: workspace)
+        return PakWorkspaceSummary(
+            workspace: workspace,
+            initialSourcePath: manifest.initialSourcePath,
+            mods: manifest.mods.map { mod in
+                PakWorkspaceModSummary(
+                    folderName: mod.folderName,
+                    archiveName: mod.archiveName,
+                    sourcePath: mod.sourcePath,
+                    modDirectory: PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName),
+                    sourceCache: workspace.appendingPathComponent(mod.sourceCachePath),
+                    enabled: mod.enabled
+                )
+            },
+            buildInitialPak: PakWorkspacePaths.buildInitialPak(root: workspace),
+            buildReport: PakWorkspacePaths.buildReport(root: workspace)
+        )
+    }
+
+    public static func setModEnabled(workspace: URL, folderName: String, enabled: Bool) throws {
+        var manifest = try loadManifest(workspace: workspace)
+        guard let index = manifest.mods.firstIndex(where: { $0.folderName == folderName }) else {
+            throw PakWorkspaceError.modNotFound(folderName)
+        }
+        if enabled {
+            let mod = manifest.mods[index]
+            let modDirectory = PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName)
+            let cache = workspace.appendingPathComponent(mod.sourceCachePath)
+            guard FileManager.default.fileExists(atPath: modDirectory.path) else {
+                throw PakWorkspaceError.missingModDirectory(modDirectory.path)
+            }
+            guard FileManager.default.fileExists(atPath: cache.path) else {
+                throw PakWorkspaceError.missingSourceCache(cache.path)
+            }
+        }
+        manifest.mods[index].enabled = enabled
+        try commitManifestOnly(workspace: workspace, manifest: manifest)
     }
 
     public static func initialize(workspace: URL, initialPak: URL) throws -> PakWorkspaceInitResult {
@@ -158,7 +246,7 @@ public enum PakWorkspaceManager {
         )
         let records = try WorkspaceInitialLoadListBuilder.records(fromInitialDirectory: initialDirectory, preservingFrom: baseManifest)
         let rebuiltManifest = try LoadListBuilder.buildManifest(records: records)
-        let mapped = try manifest.mods.flatMap { mod -> [ModMappedEntry] in
+        let mapped = try manifest.mods.filter(\.enabled).flatMap { mod -> [ModMappedEntry] in
             let modDirectory = PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName)
             let cache = workspace.appendingPathComponent(mod.sourceCachePath)
             guard FileManager.default.fileExists(atPath: modDirectory.path) else {
@@ -221,6 +309,12 @@ public enum PakWorkspaceManager {
             rollback()
             try? FileManager.default.removeItem(at: tempManifest)
             throw error
+        }
+    }
+
+    private static func commitManifestOnly(workspace: URL, manifest: PakWorkspaceManifest) throws {
+        try commitManifestLast(workspace: workspace, manifest: manifest) {
+        } rollback: {
         }
     }
 
