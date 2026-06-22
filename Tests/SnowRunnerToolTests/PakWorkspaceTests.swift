@@ -423,6 +423,47 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods.map(\.folderName), ["demo"])
     }
 
+    func testWorkspaceRemoveModDeletesFolderCacheAndManifestEntry() throws {
+        let workspace = try temporaryDirectory(named: "workspace-remove-mod")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+
+        try PakWorkspaceManager.removeMod(workspace: workspace, folderName: "demo")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo").path))
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
+    }
+
+    func testWorkspaceRemoveModDeletesManifestAuthoredSourceCache() throws {
+        let workspace = try temporaryDirectory(named: "workspace-remove-mod-custom-cache")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+        var manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        let customCachePath = ".snowrunner/custom-cache/demo-source.pak"
+        let customCache = workspace.appendingPathComponent(customCachePath)
+        try FileManager.default.createDirectory(at: customCache.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo"), to: customCache)
+        manifest.mods[0].sourceCachePath = customCachePath
+        try JSONEncoder.pakWorkspace.encode(manifest).write(to: PakWorkspacePaths.manifestURL(root: workspace), options: .atomic)
+
+        try PakWorkspaceManager.removeMod(workspace: workspace, folderName: "demo")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: customCache.path))
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
+    }
+
+    func testWorkspaceRemoveMissingModFailsClearly() throws {
+        let workspace = try temporaryDirectory(named: "workspace-remove-missing")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+        XCTAssertThrowsError(try PakWorkspaceManager.removeMod(workspace: workspace, folderName: "missing")) { error in
+            XCTAssertTrue(String(describing: error).contains("missing"))
+        }
+    }
+
     func testWorkspaceSummaryReportsEnabledAndDisabledMods() throws {
         let workspace = try temporaryDirectory(named: "workspace-summary")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)

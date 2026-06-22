@@ -109,6 +109,45 @@ public enum PakWorkspaceManager {
         try commitManifestOnly(workspace: workspace, manifest: manifest)
     }
 
+    public static func removeMod(workspace: URL, folderName: String) throws {
+        var manifest = try loadManifest(workspace: workspace)
+        guard let index = manifest.mods.firstIndex(where: { $0.folderName == folderName }) else {
+            throw PakWorkspaceError.modNotFound(folderName)
+        }
+        let mod = manifest.mods.remove(at: index)
+
+        let modDirectory = PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName)
+        let sourceCache = workspace.appendingPathComponent(mod.sourceCachePath)
+        let modBackup = workspace.appendingPathComponent(".remove-mod-\(mod.folderName)-\(UUID().uuidString)", isDirectory: true)
+        let cacheBackup = workspace.appendingPathComponent(".remove-source-\(mod.folderName)-\(UUID().uuidString).pak")
+        var movedModDirectory = false
+        var movedSourceCache = false
+
+        do {
+            if FileManager.default.fileExists(atPath: modDirectory.path) {
+                try FileManager.default.moveItem(at: modDirectory, to: modBackup)
+                movedModDirectory = true
+            }
+            if FileManager.default.fileExists(atPath: sourceCache.path) {
+                try FileManager.default.moveItem(at: sourceCache, to: cacheBackup)
+                movedSourceCache = true
+            }
+
+            try commitManifestOnly(workspace: workspace, manifest: manifest)
+        } catch {
+            restoreBackup(from: modBackup, to: modDirectory, didMove: movedModDirectory)
+            restoreBackup(from: cacheBackup, to: sourceCache, didMove: movedSourceCache)
+            throw error
+        }
+
+        if movedModDirectory {
+            try? FileManager.default.removeItem(at: modBackup)
+        }
+        if movedSourceCache {
+            try? FileManager.default.removeItem(at: cacheBackup)
+        }
+    }
+
     public static func initialize(workspace: URL, initialPak: URL) throws -> PakWorkspaceInitResult {
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         let initialDirectory = PakWorkspacePaths.initialDirectory(root: workspace)
@@ -316,6 +355,17 @@ public enum PakWorkspaceManager {
         try commitManifestLast(workspace: workspace, manifest: manifest) {
         } rollback: {
         }
+    }
+
+    private static func restoreBackup(from backup: URL, to original: URL, didMove: Bool) {
+        guard didMove,
+              FileManager.default.fileExists(atPath: backup.path),
+              !FileManager.default.fileExists(atPath: original.path)
+        else {
+            return
+        }
+        try? FileManager.default.createDirectory(at: original.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? FileManager.default.moveItem(at: backup, to: original)
     }
 
     private static func isNonEmptyDirectory(_ url: URL) throws -> Bool {
