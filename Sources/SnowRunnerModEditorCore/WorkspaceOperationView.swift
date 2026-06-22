@@ -77,44 +77,21 @@ public struct WorkspaceOperationView: View {
                 Divider()
 
                 if let mods = viewModel.summary?.mods, !mods.isEmpty {
-                    Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-                        GridRow {
-                            tableHeader("Name")
-                            tableHeader("Status")
-                            tableHeader("Conflict")
-                            tableHeader("Actions")
-                        }
-                        ForEach(mods) { mod in
+                    ScrollView(.vertical) {
+                        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
                             GridRow {
-                                Text(mod.folderName)
-                                    .textSelection(.enabled)
-                                Text(mod.enabled ? "Active" : "Disabled")
-                                    .foregroundStyle(mod.enabled ? .green : .secondary)
-                                Text(conflictCountText(for: mod.folderName))
-                                    .foregroundStyle(hasConflict(mod.folderName) ? .red : .secondary)
-                                HStack {
-                                    Button("Reveal") {
-                                        finder.reveal(mod.modDirectory)
-                                    }
-                                    if mod.enabled {
-                                        Button("Disable") {
-                                            Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: false) }
-                                        }
-                                        .disabled(viewModel.isBusy)
-                                    } else {
-                                        Button("Enable") {
-                                            Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: true) }
-                                        }
-                                        .disabled(viewModel.isBusy)
-                                    }
-                                    Button("Remove", role: .destructive) {
-                                        Task { await viewModel.removeMod(folderName: mod.folderName) }
-                                    }
-                                    .disabled(viewModel.isBusy)
-                                }
+                                tableHeader("Name")
+                                tableHeader("Status")
+                                tableHeader("Conflict")
+                                tableHeader("Actions")
+                            }
+                            ForEach(mods) { mod in
+                                modRow(mod)
                             }
                         }
+                        .padding(.trailing, 4)
                     }
+                    .frame(maxHeight: 360)
                 } else {
                     Text("No mods added.")
                         .foregroundStyle(.secondary)
@@ -213,6 +190,37 @@ public struct WorkspaceOperationView: View {
             .foregroundStyle(.secondary)
     }
 
+    private func modRow(_ mod: PakWorkspaceModSummary) -> some View {
+        GridRow {
+            Text(mod.folderName)
+                .textSelection(.enabled)
+            Text(mod.enabled ? "Active" : "Disabled")
+                .foregroundStyle(mod.enabled ? .green : .secondary)
+            Text(conflictCountText(for: mod.folderName))
+                .foregroundStyle(hasConflict(mod.folderName) ? .red : .secondary)
+            HStack {
+                Button("Reveal") {
+                    finder.reveal(mod.modDirectory)
+                }
+                if mod.enabled {
+                    Button("Disable") {
+                        Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: false) }
+                    }
+                    .disabled(viewModel.isBusy)
+                } else {
+                    Button("Enable") {
+                        Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: true) }
+                    }
+                    .disabled(viewModel.isBusy)
+                }
+                Button("Remove", role: .destructive) {
+                    Task { await viewModel.removeMod(folderName: mod.folderName) }
+                }
+                .disabled(viewModel.isBusy)
+            }
+        }
+    }
+
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(14)
@@ -227,12 +235,20 @@ public struct WorkspaceOperationView: View {
 }
 
 private struct ConflictDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
     let conflicts: [WorkspaceModConflict]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Conflict Details")
-                .font(.title3.weight(.semibold))
+            HStack {
+                Text("Conflict Details")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button("Close") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
             List(conflicts) { conflict in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(conflict.targetPath)
