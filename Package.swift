@@ -9,6 +9,7 @@ let package = Package(
     products: [
         .executable(name: "snowrunner-tool", targets: ["snowrunner-tool"]),
         .executable(name: "SnowRunnerModEditor", targets: ["SnowRunnerModEditor"]),
+        .library(name: "SnowRunnerModEditorCore", targets: ["SnowRunnerModEditorCore"]),
         .library(name: "SnowRunnerTool", targets: ["SnowRunnerTool"])
     ],
     targets: [

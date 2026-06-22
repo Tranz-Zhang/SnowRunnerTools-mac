@@ -11,9 +11,6 @@ public struct LaunchWorkspaceView: View {
     public var body: some View {
         VStack(spacing: 20) {
             VStack(spacing: 8) {
-                Text("Workspace")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
                 Text("Choose a SnowRunner workspace")
                     .font(.title2.weight(.semibold))
                 Text("Create one from initial.pak or open a folder containing .snowrunner-workspace.json.")
@@ -26,12 +23,13 @@ public struct LaunchWorkspaceView: View {
                 Button("Create Workspace From initial.pak") {
                     createWorkspace()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(LaunchActionButtonStyle(colorStyle: .main))
                 .disabled(viewModel.isBusy)
 
                 Button("Open Existing Workspace Folder") {
                     openWorkspace()
                 }
+                .buttonStyle(LaunchActionButtonStyle())
                 .disabled(viewModel.isBusy)
             }
 
@@ -46,10 +44,6 @@ public struct LaunchWorkspaceView: View {
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
             }
-
-            Text("Opening fails if the selected folder is not a valid workspace.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(32)
         .frame(maxWidth: 560, maxHeight: .infinity)
@@ -70,4 +64,8 @@ public struct LaunchWorkspaceView: View {
             await viewModel.openWorkspace(workspace)
         }
     }
+}
+
+#Preview {
+    LaunchWorkspaceView(viewModel: WorkspaceViewModel())
 }

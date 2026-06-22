@@ -12,16 +12,15 @@ public struct WorkspaceOperationView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                workspaceSection
-                modsSection
-                quickVerifySection
-                buildSection
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 16) {
+            workspaceSection
+            modsSection
+                .layoutPriority(1)
+            quickVerifySection
+            buildSection
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $showingConflicts) {
             ConflictDetailsView(conflicts: viewModel.quickVerifyResult?.conflicts ?? [])
                 .frame(minWidth: 560, minHeight: 360)
@@ -48,9 +47,11 @@ public struct WorkspaceOperationView: View {
                         finder.reveal(workspace)
                     }
                 }
+                .buttonStyle(LaunchActionButtonStyle(size: .small))
                 Button("Close Workspace") {
                     viewModel.closeWorkspace()
                 }
+                .buttonStyle(LaunchActionButtonStyle(size: .small))
                 .disabled(viewModel.isBusy)
             }
         }
@@ -71,6 +72,7 @@ public struct WorkspaceOperationView: View {
                     Button("Add Mods") {
                         addMods()
                     }
+                    .buttonStyle(LaunchActionButtonStyle(colorStyle: .main, size: .small))
                     .disabled(viewModel.isBusy)
                 }
 
@@ -80,23 +82,25 @@ public struct WorkspaceOperationView: View {
                     ScrollView(.vertical) {
                         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
                             GridRow {
+                                tableHeader("Enable")
                                 tableHeader("Name")
-                                tableHeader("Status")
-                                tableHeader("Conflict")
-                                tableHeader("Actions")
+                                Spacer()
+                                tableHeader("")
                             }
                             ForEach(mods) { mod in
                                 modRow(mod)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.trailing, 4)
                     }
-                    .frame(maxHeight: 360)
+                    .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity, alignment: .topLeading)
                 } else {
                     Text("No mods added.")
                         .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -121,6 +125,7 @@ public struct WorkspaceOperationView: View {
                     Button("Show Conflict Details") {
                         showingConflicts = true
                     }
+                    .buttonStyle(LaunchActionButtonStyle(size: .small))
                 }
             }
         }
@@ -142,12 +147,14 @@ public struct WorkspaceOperationView: View {
                 Button("Build PAK") {
                     Task { await viewModel.build() }
                 }
+                .buttonStyle(LaunchActionButtonStyle(colorStyle: .main, size: .small))
                 .disabled(viewModel.isBusy)
                 Button("Review Build") {
                     if let output = viewModel.summary?.buildInitialPak {
                         finder.reveal(output)
                     }
                 }
+                .buttonStyle(LaunchActionButtonStyle(size: .small))
                 .disabled(viewModel.summary == nil || viewModel.buildResult == nil)
             }
         }
@@ -175,15 +182,6 @@ public struct WorkspaceOperationView: View {
         Task { await viewModel.addMods(urls) }
     }
 
-    private func hasConflict(_ folderName: String) -> Bool {
-        (viewModel.quickVerifyResult?.conflicts ?? []).contains { $0.mods.contains(folderName) }
-    }
-
-    private func conflictCountText(for folderName: String) -> String {
-        let count = (viewModel.quickVerifyResult?.conflicts ?? []).filter { $0.mods.contains(folderName) }.count
-        return count == 0 ? "None" : "\(count) target\(count == 1 ? "" : "s")"
-    }
-
     private func tableHeader(_ text: String) -> some View {
         Text(text)
             .font(.caption.weight(.semibold))
@@ -192,33 +190,46 @@ public struct WorkspaceOperationView: View {
 
     private func modRow(_ mod: PakWorkspaceModSummary) -> some View {
         GridRow {
-            Text(mod.folderName)
-                .textSelection(.enabled)
-            Text(mod.enabled ? "Active" : "Disabled")
-                .foregroundStyle(mod.enabled ? .green : .secondary)
-            Text(conflictCountText(for: mod.folderName))
-                .foregroundStyle(hasConflict(mod.folderName) ? .red : .secondary)
-            HStack {
-                Button("Reveal") {
-                    finder.reveal(mod.modDirectory)
-                }
-                if mod.enabled {
-                    Button("Disable") {
-                        Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: false) }
-                    }
-                    .disabled(viewModel.isBusy)
-                } else {
-                    Button("Enable") {
-                        Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: true) }
-                    }
-                    .disabled(viewModel.isBusy)
-                }
-                Button("Remove", role: .destructive) {
-                    Task { await viewModel.removeMod(folderName: mod.folderName) }
-                }
+            Toggle("Enabled", isOn: modEnabledBinding(for: mod))
+                .toggleStyle(.switch)
+                .labelsHidden()
                 .disabled(viewModel.isBusy)
+                .accessibilityLabel("Enable \(mod.folderName)")
+            Text(mod.folderName)
+                .font(.system(size: 15, weight: .regular))
+                .textSelection(.enabled)
+            Spacer()
+            HStack(spacing: 15) {
+                Button {
+                    finder.reveal(mod.modDirectory)
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.borderless)
+                .help("Reveal")
+                .accessibilityLabel("Reveal \(mod.folderName)")
+                
+                Button(role: .destructive) {
+                    Task { await viewModel.removeMod(folderName: mod.folderName) }
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isBusy)
+                .help("Remove")
+                .accessibilityLabel("Remove \(mod.folderName)")
             }
-        }
+        }.frame(height: 30)
+    }
+
+    private func modEnabledBinding(for mod: PakWorkspaceModSummary) -> Binding<Bool> {
+        Binding(
+            get: { mod.enabled },
+            set: { enabled in
+                Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: enabled) }
+            }
+        )
     }
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -262,5 +273,53 @@ private struct ConflictDetailsView: View {
             }
         }
         .padding(20)
+    }
+}
+
+#Preview {
+    WorkspaceOperationView(viewModel: WorkspaceOperationPreview.viewModel)
+        .frame(width: 900, height: 640)
+}
+
+private enum WorkspaceOperationPreview {
+    @MainActor
+    static var viewModel: WorkspaceViewModel {
+        let workspace = URL(fileURLWithPath: "/Users/demo/SnowRunnerWorkspace", isDirectory: true)
+        let model = WorkspaceViewModel()
+        model.screen = .workspace
+        model.summary = PakWorkspaceSummary(
+            workspace: workspace,
+            initialSourcePath: "/Applications/SnowRunner/preload/paks/client/initial.pak",
+            mods: [
+                modSummary(folderName: "azov-tuning-pack", archiveName: "azov_tuning.pak", workspace: workspace, enabled: true),
+                modSummary(folderName: "loadstar-rescue-kit", archiveName: "loadstar_rescue.pak", workspace: workspace, enabled: true),
+                modSummary(folderName: "old-truck-addon", archiveName: "old_truck_addon.pak", workspace: workspace, enabled: false)
+            ],
+            buildInitialPak: workspace.appendingPathComponent("build/initial.pak"),
+            buildReport: workspace.appendingPathComponent("build/workspace-build-report.md")
+        )
+        model.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            WorkspaceModConflict(
+                targetPath: "initial.pak/classes/trucks/azov_64131.xml",
+                mods: ["azov-tuning-pack", "loadstar-rescue-kit"]
+            )
+        ])
+        return model
+    }
+
+    private static func modSummary(
+        folderName: String,
+        archiveName: String,
+        workspace: URL,
+        enabled: Bool
+    ) -> PakWorkspaceModSummary {
+        PakWorkspaceModSummary(
+            folderName: folderName,
+            archiveName: archiveName,
+            sourcePath: "/Users/demo/Downloads/\(archiveName)",
+            modDirectory: workspace.appendingPathComponent("mods/\(folderName)", isDirectory: true),
+            sourceCache: workspace.appendingPathComponent(".snowrunner/sources/\(archiveName)"),
+            enabled: enabled
+        )
     }
 }
