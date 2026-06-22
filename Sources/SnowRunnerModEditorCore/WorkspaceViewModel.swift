@@ -8,6 +8,7 @@ public final class WorkspaceViewModel {
     public enum Screen: Equatable {
         case launch
         case workspace
+        case conflictDetails
     }
 
     public enum BusyState: Equatable {
@@ -74,6 +75,21 @@ public final class WorkspaceViewModel {
         errorMessage = nil
         busyState = .idle
         screen = .launch
+    }
+
+    public func showWorkspace() {
+        guard summary != nil else {
+            screen = .launch
+            return
+        }
+        screen = .workspace
+    }
+
+    public func showConflictDetails() {
+        guard screen == .workspace,
+              !(quickVerifyResult?.conflicts.isEmpty ?? true)
+        else { return }
+        screen = .conflictDetails
     }
 
     public func addMods(_ modPaks: [URL]) async {

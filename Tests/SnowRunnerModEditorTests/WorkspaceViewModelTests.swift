@@ -33,6 +33,29 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testConflictDetailsScreenRequiresConflictsAndCanReturnToWorkspace() async {
+        let service = FakeWorkspaceService()
+        let model = WorkspaceViewModel(service: service)
+
+        model.showConflictDetails()
+        XCTAssertEqual(model.screen, .launch)
+
+        model.summary = summary(workspace: URL(fileURLWithPath: "/tmp/workspace", isDirectory: true), mods: [])
+        model.screen = .workspace
+        model.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        model.showConflictDetails()
+        XCTAssertEqual(model.screen, .workspace)
+
+        model.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            WorkspaceModConflict(targetPath: "classes/trucks/demo.xml", mods: ["first", "second"])
+        ])
+        model.showConflictDetails()
+        XCTAssertEqual(model.screen, .conflictDetails)
+
+        model.showWorkspace()
+        XCTAssertEqual(model.screen, .workspace)
+    }
+
     func testOldQuickVerifyCannotUpdateStateAfterFailedOpen() async {
         let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
         let service = FakeWorkspaceService()

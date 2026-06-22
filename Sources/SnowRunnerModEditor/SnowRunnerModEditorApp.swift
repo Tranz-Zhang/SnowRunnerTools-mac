@@ -13,6 +13,8 @@ struct SnowRunnerModEditorApp: App {
                     LaunchWorkspaceView(viewModel: viewModel)
                 case .workspace:
                     WorkspaceOperationView(viewModel: viewModel)
+                case .conflictDetails:
+                    ConflictDetailsView(viewModel: viewModel)
                 }
             }
             .frame(minWidth: 760, minHeight: 520)

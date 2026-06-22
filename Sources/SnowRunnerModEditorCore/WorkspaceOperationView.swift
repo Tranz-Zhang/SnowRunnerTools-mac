@@ -3,7 +3,6 @@ import SnowRunnerTool
 
 public struct WorkspaceOperationView: View {
     @Bindable var viewModel: WorkspaceViewModel
-    @State private var showingConflicts = false
     private let panels = AppFilePanels()
     private let finder = FinderActions()
 
@@ -21,10 +20,6 @@ public struct WorkspaceOperationView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .sheet(isPresented: $showingConflicts) {
-            ConflictDetailsView(conflicts: viewModel.quickVerifyResult?.conflicts ?? [])
-                .frame(minWidth: 560, minHeight: 360)
-        }
     }
 
     private var workspaceSection: some View {
@@ -123,7 +118,7 @@ public struct WorkspaceOperationView: View {
                 }
                 if hasQuickVerifyConflicts {
                     Button("Show Conflict Details") {
-                        showingConflicts = true
+                        viewModel.showConflictDetails()
                     }
                     .buttonStyle(LaunchActionButtonStyle(size: .small))
                 }
@@ -242,37 +237,6 @@ public struct WorkspaceOperationView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(.separator)
             }
-    }
-}
-
-private struct ConflictDetailsView: View {
-    @Environment(\.dismiss) private var dismiss
-    let conflicts: [WorkspaceModConflict]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Conflict Details")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Button("Close") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-            }
-            List(conflicts) { conflict in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(conflict.targetPath)
-                        .font(.callout.weight(.semibold))
-                        .textSelection(.enabled)
-                    Text(conflict.mods.joined(separator: ", "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-        }
-        .padding(20)
     }
 }
 
