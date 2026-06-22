@@ -30,6 +30,25 @@ public struct PakWorkspaceSummary: Equatable {
     }
 }
 
+public struct WorkspaceQuickVerifyResult: Equatable {
+    public var conflicts: [WorkspaceModConflict]
+
+    public init(conflicts: [WorkspaceModConflict]) {
+        self.conflicts = conflicts
+    }
+}
+
+public struct WorkspaceModConflict: Equatable, Identifiable {
+    public var id: String { targetPath }
+    public var targetPath: String
+    public var mods: [String]
+
+    public init(targetPath: String, mods: [String]) {
+        self.targetPath = targetPath
+        self.mods = mods
+    }
+}
+
 public struct PakWorkspaceModSummary: Equatable, Identifiable {
     public var id: String { folderName }
     public var folderName: String
@@ -246,6 +265,26 @@ public enum PakWorkspaceManager {
         return try buildCandidate(workspace: workspace, output: temp, reportURL: nil)
     }
 
+    public static func quickVerify(workspace: URL) throws -> WorkspaceQuickVerifyResult {
+        let manifest = try loadManifest(workspace: workspace)
+        let mappedMods = try mappedEntriesForEnabledMods(workspace: workspace, manifest: manifest)
+        var modsByTarget: [MappedTargetKey: Set<String>] = [:]
+
+        for mappedMod in mappedMods {
+            for entry in mappedMod.entries {
+                let key = MappedTargetKey(targetArchive: entry.targetArchive, internalName: entry.internalName)
+                modsByTarget[key, default: []].insert(mappedMod.mod.folderName)
+            }
+        }
+
+        let conflicts = modsByTarget
+            .filter { $0.value.count > 1 }
+            .map { WorkspaceModConflict(targetPath: targetPathDisplay(for: $0.key), mods: $0.value.sorted()) }
+            .sorted { $0.targetPath < $1.targetPath }
+
+        return WorkspaceQuickVerifyResult(conflicts: conflicts)
+    }
+
     public static func build(workspace: URL) throws -> ModMergeResult {
         let buildDirectory = PakWorkspacePaths.buildDirectory(root: workspace)
         try FileManager.default.createDirectory(at: buildDirectory, withIntermediateDirectories: true)
@@ -285,23 +324,7 @@ public enum PakWorkspaceManager {
         )
         let records = try WorkspaceInitialLoadListBuilder.records(fromInitialDirectory: initialDirectory, preservingFrom: baseManifest)
         let rebuiltManifest = try LoadListBuilder.buildManifest(records: records)
-        let mapped = try manifest.mods.filter(\.enabled).flatMap { mod -> [ModMappedEntry] in
-            let modDirectory = PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName)
-            let cache = workspace.appendingPathComponent(mod.sourceCachePath)
-            guard FileManager.default.fileExists(atPath: modDirectory.path) else {
-                throw PakWorkspaceError.missingModDirectory(modDirectory.path)
-            }
-            guard FileManager.default.fileExists(atPath: cache.path) else {
-                throw PakWorkspaceError.missingSourceCache(cache.path)
-            }
-            return try ModArchiveMapper.mapDirectory(
-                at: modDirectory,
-                archiveName: mod.archiveName,
-                sourceCache: cache,
-                sourceEntries: mod.entries,
-                workspaceRoot: workspace
-            )
-        }
+        let mapped = try mappedEntriesForEnabledMods(workspace: workspace, manifest: manifest).flatMap(\.entries)
         let result = try ModMerger.mergeWorkspaceInitial(
             initialDirectory: initialDirectory,
             baseManifest: rebuiltManifest,
@@ -314,6 +337,53 @@ public enum PakWorkspaceManager {
             try PakWorkspaceReporter.markdown(result: result).write(to: reportURL, atomically: true, encoding: .utf8)
         }
         return result
+    }
+
+    private static func mappedEntriesForEnabledMods(
+        workspace: URL,
+        manifest: PakWorkspaceManifest
+    ) throws -> [(mod: PakWorkspaceMod, entries: [ModMappedEntry])] {
+        try manifest.mods.filter(\.enabled).map { mod in
+            let modDirectory = PakWorkspacePaths.modDirectory(root: workspace, folderName: mod.folderName)
+            let cache = workspace.appendingPathComponent(mod.sourceCachePath)
+            guard FileManager.default.fileExists(atPath: modDirectory.path) else {
+                throw PakWorkspaceError.missingModDirectory(modDirectory.path)
+            }
+            guard FileManager.default.fileExists(atPath: cache.path) else {
+                throw PakWorkspaceError.missingSourceCache(cache.path)
+            }
+            let entries = try ModArchiveMapper.mapDirectory(
+                at: modDirectory,
+                archiveName: mod.archiveName,
+                sourceCache: cache,
+                sourceEntries: mod.entries,
+                workspaceRoot: workspace
+            )
+            return (mod: mod, entries: entries)
+        }
+    }
+
+    private struct MappedTargetKey: Hashable {
+        var targetArchive: ModMergeTargetArchive
+        var internalName: String
+
+        static func == (lhs: MappedTargetKey, rhs: MappedTargetKey) -> Bool {
+            lhs.targetArchive == rhs.targetArchive && lhs.internalName == rhs.internalName
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(targetArchive.rawValue)
+            hasher.combine(internalName)
+        }
+    }
+
+    private static func targetPathDisplay(for key: MappedTargetKey) -> String {
+        switch key.targetArchive {
+        case .initial:
+            return key.internalName
+        case .sharedTexturesBase, .sharedTextures:
+            return "\(key.targetArchive.rawValue):\(key.internalName)"
+        }
     }
 
     private static func sourceEntries(for pak: URL, folderName: String) throws -> [PakWorkspaceSourceEntry] {

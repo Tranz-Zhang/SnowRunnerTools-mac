@@ -631,6 +631,100 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertGreaterThan(result.plan.mappedModEntryCount, 0)
     }
 
+    func testWorkspaceQuickVerifyFlagsDuplicateTargetsWithDifferentBytes() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-conflict-different")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [
+            WorkspaceModConflict(
+                targetPath: "[media]\\classes\\trucks\\same.xml",
+                mods: ["first", "second"]
+            )
+        ])
+    }
+
+    func testWorkspaceQuickVerifyFlagsDuplicateTargetsWithIdenticalBytes() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-conflict-identical")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"same\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"same\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts.map(\.targetPath), ["[media]\\classes\\trucks\\same.xml"])
+        XCTAssertEqual(result.conflicts[0].mods, ["first", "second"])
+    }
+
+    func testWorkspaceQuickVerifyFlagsDuplicateNonInitialTargetsWithIdenticalBytes() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-conflict-shared-texture")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "ui/textures/foo.dds": Data([1, 2, 3, 4])
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "ui/textures/foo.dds": Data([1, 2, 3, 4])
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [
+            WorkspaceModConflict(
+                targetPath: "shared_textures_base.pak:[textures]\\foo.dds",
+                mods: ["first", "second"]
+            )
+        ])
+    }
+
+    func testWorkspaceQuickVerifyIgnoresDisabledMods() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-disabled")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.setModEnabled(workspace: workspace, folderName: "second", enabled: false)
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [])
+    }
+
+    func testWorkspaceQuickVerifyIgnoresModOverInitialReplacement() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-over-initial")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let replacement = try makePak(named: "replacement.pak", entries: [
+            "classes/trucks/existing.xml": Data("<Truck id=\"replacement\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [replacement])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [])
+    }
+
     func testWorkspaceBuildIgnoresDisabledModPayload() throws {
         let base = try makeSyntheticInitialPak()
         let workspace = try temporaryDirectory(named: "workspace-build-disabled")
