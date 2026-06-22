@@ -19,20 +19,52 @@ public struct PakWorkspaceMod: Codable, Equatable {
     public var folderName: String
     public var archiveName: String
     public var sourceCachePath: String
+    public var enabled: Bool
     public var entries: [PakWorkspaceSourceEntry]
+
+    private enum CodingKeys: String, CodingKey {
+        case sourcePath
+        case folderName
+        case archiveName
+        case sourceCachePath
+        case enabled
+        case entries
+    }
 
     public init(
         sourcePath: String,
         folderName: String,
         archiveName: String,
         sourceCachePath: String,
+        enabled: Bool = true,
         entries: [PakWorkspaceSourceEntry]
     ) {
         self.sourcePath = sourcePath
         self.folderName = folderName
         self.archiveName = archiveName
         self.sourceCachePath = sourceCachePath
+        self.enabled = enabled
         self.entries = entries
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourcePath = try container.decode(String.self, forKey: .sourcePath)
+        folderName = try container.decode(String.self, forKey: .folderName)
+        archiveName = try container.decode(String.self, forKey: .archiveName)
+        sourceCachePath = try container.decode(String.self, forKey: .sourceCachePath)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        entries = try container.decode([PakWorkspaceSourceEntry].self, forKey: .entries)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sourcePath, forKey: .sourcePath)
+        try container.encode(folderName, forKey: .folderName)
+        try container.encode(archiveName, forKey: .archiveName)
+        try container.encode(sourceCachePath, forKey: .sourceCachePath)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(entries, forKey: .entries)
     }
 }
 

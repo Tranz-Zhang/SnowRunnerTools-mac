@@ -3,6 +3,58 @@ import XCTest
 @testable import SnowRunnerTool
 
 final class PakWorkspaceTests: XCTestCase {
+    func testWorkspaceManifestDecodesMissingEnabledAsTrue() throws {
+        let json = Data("""
+        {
+          "version": 1,
+          "initialSourcePath": "/game/initial.pak",
+          "mods": [
+            {
+              "sourcePath": "/mods/demo.pak",
+              "folderName": "demo",
+              "archiveName": "demo.pak",
+              "sourceCachePath": ".snowrunner/sources/demo.pak",
+              "entries": []
+            }
+          ],
+          "policy": {
+            "textureMode": "inlineInitial",
+            "allowInitialOverwrite": true
+          }
+        }
+        """.utf8)
+
+        let manifest = try JSONDecoder.pakWorkspace.decode(PakWorkspaceManifest.self, from: json)
+
+        XCTAssertEqual(manifest.mods.count, 1)
+        XCTAssertTrue(manifest.mods[0].enabled)
+    }
+
+    func testWorkspaceManifestEncodesEnabledState() throws {
+        let manifest = PakWorkspaceManifest(
+            version: 1,
+            initialSourcePath: "/game/initial.pak",
+            mods: [
+                PakWorkspaceMod(
+                    sourcePath: "/mods/demo.pak",
+                    folderName: "demo",
+                    archiveName: "demo.pak",
+                    sourceCachePath: ".snowrunner/sources/demo.pak",
+                    enabled: false,
+                    entries: []
+                )
+            ],
+            policy: PakWorkspacePolicy(textureMode: "inlineInitial", allowInitialOverwrite: true)
+        )
+
+        let data = try JSONEncoder.pakWorkspace.encode(manifest)
+        let text = String(decoding: data, as: UTF8.self)
+        let decoded = try JSONDecoder.pakWorkspace.decode(PakWorkspaceManifest.self, from: data)
+
+        XCTAssertTrue(text.contains("\"enabled\" : false") || text.contains("\"enabled\": false"))
+        XCTAssertFalse(decoded.mods[0].enabled)
+    }
+
     func testWorkspaceManifestRoundTrips() throws {
         let manifest = PakWorkspaceManifest(
             version: 1,
