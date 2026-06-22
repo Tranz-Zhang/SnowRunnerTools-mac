@@ -45,3 +45,35 @@ public struct ConflictDetailsView: View {
         viewModel.quickVerifyResult?.conflicts ?? []
     }
 }
+
+#Preview {
+    ConflictDetailsView(viewModel: ConflictDetailsPreview.viewModel)
+        .frame(width: 720, height: 420)
+}
+
+private enum ConflictDetailsPreview {
+    @MainActor
+    static var viewModel: WorkspaceViewModel {
+        let workspace = URL(fileURLWithPath: "/Users/demo/SnowRunnerWorkspace", isDirectory: true)
+        let model = WorkspaceViewModel()
+        model.screen = .conflictDetails
+        model.summary = PakWorkspaceSummary(
+            workspace: workspace,
+            initialSourcePath: "/Applications/SnowRunner/preload/paks/client/initial.pak",
+            mods: [],
+            buildInitialPak: workspace.appendingPathComponent("build/initial.pak"),
+            buildReport: workspace.appendingPathComponent("build/workspace-build-report.md")
+        )
+        model.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            WorkspaceModConflict(
+                targetPath: "initial.pak/classes/trucks/azov_64131.xml",
+                mods: ["azov-tuning-pack", "loadstar-rescue-kit"]
+            ),
+            WorkspaceModConflict(
+                targetPath: "initial.pak/classes/wheels/offroad.xml",
+                mods: ["loadstar-rescue-kit", "trail-wheel-pack"]
+            )
+        ])
+        return model
+    }
+}
