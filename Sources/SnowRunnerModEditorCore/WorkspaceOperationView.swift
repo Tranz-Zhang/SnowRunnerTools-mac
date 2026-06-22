@@ -106,11 +106,11 @@ public struct WorkspaceOperationView: View {
                                             Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: true) }
                                         }
                                         .disabled(viewModel.isBusy)
-                                        Button("Remove", role: .destructive) {
-                                            Task { await viewModel.removeMod(folderName: mod.folderName) }
-                                        }
-                                        .disabled(viewModel.isBusy)
                                     }
+                                    Button("Remove", role: .destructive) {
+                                        Task { await viewModel.removeMod(folderName: mod.folderName) }
+                                    }
+                                    .disabled(viewModel.isBusy)
                                 }
                             }
                         }

@@ -76,6 +76,8 @@ public struct PakWorkspaceModSummary: Equatable, Identifiable {
 }
 
 public enum PakWorkspaceManager {
+    nonisolated(unsafe) static var afterInitialBuildPakPublishHook: (() throws -> Void)?
+
     public static func loadManifest(workspace: URL) throws -> PakWorkspaceManifest {
         let url = PakWorkspacePaths.manifestURL(root: workspace)
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -295,8 +297,12 @@ public enum PakWorkspaceManager {
             try? FileManager.default.removeItem(at: tempReport)
         }
         let result = try buildCandidate(workspace: workspace, output: tempPak, reportURL: tempReport)
-        try replaceItem(at: PakWorkspacePaths.buildInitialPak(root: workspace), with: tempPak)
-        try replaceItem(at: PakWorkspacePaths.buildReport(root: workspace), with: tempReport)
+        try publishBuildOutputs(
+            initialPak: tempPak,
+            report: tempReport,
+            outputInitialPak: PakWorkspacePaths.buildInitialPak(root: workspace),
+            outputReport: PakWorkspacePaths.buildReport(root: workspace)
+        )
         return ModMergeResult(
             plan: result.plan,
             outputURL: PakWorkspacePaths.buildInitialPak(root: workspace),
@@ -425,6 +431,59 @@ public enum PakWorkspaceManager {
         try commitManifestLast(workspace: workspace, manifest: manifest) {
         } rollback: {
         }
+    }
+
+    private static func publishBuildOutputs(
+        initialPak: URL,
+        report: URL,
+        outputInitialPak: URL,
+        outputReport: URL
+    ) throws {
+        let transactionID = UUID().uuidString
+        let pakBackup = outputInitialPak.deletingLastPathComponent()
+            .appendingPathComponent(".\(outputInitialPak.lastPathComponent).backup-\(transactionID)")
+        let reportBackup = outputReport.deletingLastPathComponent()
+            .appendingPathComponent(".\(outputReport.lastPathComponent).backup-\(transactionID)")
+        var movedPakBackup = false
+        var movedReportBackup = false
+        var publishedPak = false
+        var publishedReport = false
+
+        do {
+            movedPakBackup = try moveExistingItemForRollback(at: outputInitialPak, to: pakBackup)
+            movedReportBackup = try moveExistingItemForRollback(at: outputReport, to: reportBackup)
+            try FileManager.default.moveItem(at: initialPak, to: outputInitialPak)
+            publishedPak = true
+            try afterInitialBuildPakPublishHook?()
+            try FileManager.default.moveItem(at: report, to: outputReport)
+            publishedReport = true
+        } catch {
+            removePublishedItem(at: outputReport, didPublish: publishedReport)
+            removePublishedItem(at: outputInitialPak, didPublish: publishedPak)
+            restoreBackup(from: reportBackup, to: outputReport, didMove: movedReportBackup)
+            restoreBackup(from: pakBackup, to: outputInitialPak, didMove: movedPakBackup)
+            throw error
+        }
+
+        if movedPakBackup {
+            try? FileManager.default.removeItem(at: pakBackup)
+        }
+        if movedReportBackup {
+            try? FileManager.default.removeItem(at: reportBackup)
+        }
+    }
+
+    private static func moveExistingItemForRollback(at original: URL, to backup: URL) throws -> Bool {
+        guard FileManager.default.fileExists(atPath: original.path) else {
+            return false
+        }
+        try FileManager.default.moveItem(at: original, to: backup)
+        return true
+    }
+
+    private static func removePublishedItem(at url: URL, didPublish: Bool) {
+        guard didPublish else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     private static func restoreBackup(from backup: URL, to original: URL, didMove: Bool) {

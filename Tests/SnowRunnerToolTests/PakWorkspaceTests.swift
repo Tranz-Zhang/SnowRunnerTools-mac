@@ -773,6 +773,25 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8), previousReport)
     }
 
+    func testWorkspaceBuildReportPublishFailureRollsBackPublishedPak() throws {
+        let workspace = try temporaryDirectory(named: "workspace-build-report-publish-rollback")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+        let previousPak = try Data(contentsOf: PakWorkspacePaths.buildInitialPak(root: workspace))
+        let previousReport = try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8)
+
+        let mod = try makePak(named: "demo.pak", entries: ["classes/trucks/demo.xml": Data("<Truck/>".utf8)])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [mod])
+        PakWorkspaceManager.afterInitialBuildPakPublishHook = {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        defer { PakWorkspaceManager.afterInitialBuildPakPublishHook = nil }
+
+        XCTAssertThrowsError(try PakWorkspaceManager.build(workspace: workspace))
+        XCTAssertEqual(try Data(contentsOf: PakWorkspacePaths.buildInitialPak(root: workspace)), previousPak)
+        XCTAssertEqual(try String(contentsOf: PakWorkspacePaths.buildReport(root: workspace), encoding: .utf8), previousReport)
+    }
+
     func testWorkspaceVerifyReportsMissingModDirectoryWithWorkspacePath() throws {
         let workspace = try temporaryDirectory(named: "workspace-missing-mod-dir")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
