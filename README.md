@@ -106,6 +106,32 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snow
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool workspace /tmp/srt-workspace --build
 ```
 
+## SnowRunnerModEditor App
+
+`SnowRunnerModEditor` is the native macOS workspace GUI.
+
+Run it from SwiftPM during development:
+
+```bash
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run SnowRunnerModEditor
+```
+
+The app opens in two steps:
+
+1. Create a workspace from `initial.pak` or open a folder containing `.snowrunner-workspace.json`.
+2. Operate the workspace: add mods, enable/disable/remove mods, review quick mod-to-mod conflicts, and build the verified output.
+
+The app does not edit workspace files directly. Use Finder or external editors for manual changes under `initial/` and `mods/`.
+
+Generated output is fixed to:
+
+```text
+workspace/build/initial.pak
+workspace/build/workspace-build-report.md
+```
+
+The original source `initial.pak` is never overwritten.
+
 The workspace keeps editable source folders under `initial/` and `mods/`.
 Generated output is written only after verification succeeds:
 
