@@ -1,12 +1,16 @@
 import SwiftUI
 
 public struct WorkspaceOperationView: View {
-    public init() {}
+    @Bindable var viewModel: WorkspaceViewModel
+
+    public init(viewModel: WorkspaceViewModel) {
+        self.viewModel = viewModel
+    }
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                SectionHeader(title: "Workspace", subtitle: "No workspace loaded")
+                SectionHeader(title: "Workspace", subtitle: viewModel.summary?.workspace.path ?? "No workspace loaded")
                 SectionHeader(title: "Mods", subtitle: "No mods")
                 SectionHeader(title: "Quick Verify", subtitle: "Not run")
                 SectionHeader(title: "Build Output", subtitle: "build/initial.pak")
