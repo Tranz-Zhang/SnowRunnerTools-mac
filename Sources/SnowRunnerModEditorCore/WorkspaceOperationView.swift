@@ -51,6 +51,7 @@ public struct WorkspaceOperationView: View {
                 Button("Close Workspace") {
                     viewModel.closeWorkspace()
                 }
+                .disabled(viewModel.isBusy)
             }
         }
     }
@@ -99,13 +100,16 @@ public struct WorkspaceOperationView: View {
                                         Button("Disable") {
                                             Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: false) }
                                         }
+                                        .disabled(viewModel.isBusy)
                                     } else {
                                         Button("Enable") {
                                             Task { await viewModel.setModEnabled(folderName: mod.folderName, enabled: true) }
                                         }
+                                        .disabled(viewModel.isBusy)
                                         Button("Remove", role: .destructive) {
                                             Task { await viewModel.removeMod(folderName: mod.folderName) }
                                         }
+                                        .disabled(viewModel.isBusy)
                                     }
                                 }
                             }
@@ -167,7 +171,7 @@ public struct WorkspaceOperationView: View {
                         finder.reveal(output)
                     }
                 }
-                .disabled(viewModel.summary == nil)
+                .disabled(viewModel.summary == nil || viewModel.buildResult == nil)
             }
         }
     }
