@@ -11,4 +11,5 @@ workspace
 workspace_v2
 .superpowers
 .worktrees/
-.swiftpm/xcode/package.xcworkspace/xcuserdata/**
+./**/xcuserdata
+.swiftpm/**/xcuserdata
