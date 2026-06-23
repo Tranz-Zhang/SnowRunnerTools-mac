@@ -132,6 +132,83 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertNil(model.buildResult)
     }
 
+    func testResolveConflictCallsServiceRefreshesQuickVerifyAndStaysOnConflictDetails() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            WorkspaceModConflict(
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\same.xml",
+                targetPath: "[media]\\classes\\trucks\\same.xml",
+                candidates: [
+                    WorkspaceModConflictCandidate(modFolderName: "first", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "a"),
+                    WorkspaceModConflictCandidate(modFolderName: "second", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "b")
+                ]
+            )
+        ])
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+        model.showConflictDetails()
+
+        await model.resolveConflict(
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+        await waitForQuickVerify()
+
+        XCTAssertEqual(service.resolvedConflicts, [
+            FakeWorkspaceService.ResolvedConflict(
+                workspace: workspace,
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\same.xml",
+                selectedMod: "second"
+            )
+        ])
+        XCTAssertEqual(model.screen, .conflictDetails)
+        XCTAssertEqual(service.quickVerifyCalls, 2)
+    }
+
+    func testClearConflictResolutionCallsServiceRefreshesQuickVerifyAndStaysOnConflictDetails() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            WorkspaceModConflict(
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\same.xml",
+                targetPath: "[media]\\classes\\trucks\\same.xml",
+                candidates: [
+                    WorkspaceModConflictCandidate(modFolderName: "first", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "a"),
+                    WorkspaceModConflictCandidate(modFolderName: "second", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "b")
+                ],
+                selectedMod: "second"
+            )
+        ])
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+        model.showConflictDetails()
+
+        await model.clearConflictResolution(
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml"
+        )
+        await waitForQuickVerify()
+
+        XCTAssertEqual(service.clearedConflicts, [
+            FakeWorkspaceService.ClearedConflict(
+                workspace: workspace,
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\same.xml"
+            )
+        ])
+        XCTAssertEqual(model.screen, .conflictDetails)
+        XCTAssertEqual(service.quickVerifyCalls, 2)
+    }
+
     private func summary(workspace: URL, mods: [PakWorkspaceModSummary]) -> PakWorkspaceSummary {
         PakWorkspaceSummary(
             workspace: workspace,
@@ -179,6 +256,19 @@ final class WorkspaceViewModelTests: XCTestCase {
 }
 
 private final class FakeWorkspaceService: WorkspaceAppServicing {
+    struct ResolvedConflict: Equatable {
+        var workspace: URL
+        var targetArchive: ModMergeTargetArchive
+        var internalName: String
+        var selectedMod: String
+    }
+
+    struct ClearedConflict: Equatable {
+        var workspace: URL
+        var targetArchive: ModMergeTargetArchive
+        var internalName: String
+    }
+
     var summary = PakWorkspaceSummary(
         workspace: URL(fileURLWithPath: "/tmp/workspace", isDirectory: true),
         initialSourcePath: "/game/initial.pak",
@@ -192,6 +282,8 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
     var openWorkspaceError: Error?
     var quickVerifyCalls = 0
     var quickVerifyDelayNanoseconds: UInt64 = 0
+    var resolvedConflicts: [ResolvedConflict] = []
+    var clearedConflicts: [ClearedConflict] = []
 
     func createWorkspace(workspace: URL, initialPak: URL) async throws -> PakWorkspaceSummary {
         if let error { throw error }
@@ -216,6 +308,36 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
 
     func removeMod(workspace: URL, folderName: String) async throws -> PakWorkspaceSummary {
         if let error { throw error }
+        return summary
+    }
+
+    func resolveConflict(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String,
+        selectedMod: String
+    ) async throws -> PakWorkspaceSummary {
+        if let error { throw error }
+        resolvedConflicts.append(ResolvedConflict(
+            workspace: workspace,
+            targetArchive: targetArchive,
+            internalName: internalName,
+            selectedMod: selectedMod
+        ))
+        return summary
+    }
+
+    func clearConflictResolution(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String
+    ) async throws -> PakWorkspaceSummary {
+        if let error { throw error }
+        clearedConflicts.append(ClearedConflict(
+            workspace: workspace,
+            targetArchive: targetArchive,
+            internalName: internalName
+        ))
         return summary
     }
 

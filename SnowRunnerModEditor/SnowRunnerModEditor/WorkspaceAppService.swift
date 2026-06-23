@@ -8,6 +8,17 @@ public protocol WorkspaceAppServicing {
     func addMods(workspace: URL, modPaks: [URL]) async throws -> PakWorkspaceSummary
     func setModEnabled(workspace: URL, folderName: String, enabled: Bool) async throws -> PakWorkspaceSummary
     func removeMod(workspace: URL, folderName: String) async throws -> PakWorkspaceSummary
+    func resolveConflict(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String,
+        selectedMod: String
+    ) async throws -> PakWorkspaceSummary
+    func clearConflictResolution(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String
+    ) async throws -> PakWorkspaceSummary
     func quickVerify(workspace: URL) async throws -> WorkspaceQuickVerifyResult
     func build(workspace: URL) async throws -> ModMergeResult
 }
@@ -45,6 +56,42 @@ public struct WorkspaceAppService: WorkspaceAppServicing {
     public func removeMod(workspace: URL, folderName: String) async throws -> PakWorkspaceSummary {
         try await detachedValue(priority: .userInitiated) {
             try PakWorkspaceManager.removeMod(workspace: workspace, folderName: folderName)
+            return try PakWorkspaceManager.summary(workspace: workspace)
+        }
+    }
+
+    public func resolveConflict(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String,
+        selectedMod: String
+    ) async throws -> PakWorkspaceSummary {
+        let targetArchiveRawValue = targetArchive.rawValue
+        return try await detachedValue(priority: .userInitiated) {
+            let targetArchive = ModMergeTargetArchive(rawValue: targetArchiveRawValue)!
+            try PakWorkspaceManager.resolveConflict(
+                workspace: workspace,
+                targetArchive: targetArchive,
+                internalName: internalName,
+                selectedMod: selectedMod
+            )
+            return try PakWorkspaceManager.summary(workspace: workspace)
+        }
+    }
+
+    public func clearConflictResolution(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String
+    ) async throws -> PakWorkspaceSummary {
+        let targetArchiveRawValue = targetArchive.rawValue
+        return try await detachedValue(priority: .userInitiated) {
+            let targetArchive = ModMergeTargetArchive(rawValue: targetArchiveRawValue)!
+            try PakWorkspaceManager.clearConflictResolution(
+                workspace: workspace,
+                targetArchive: targetArchive,
+                internalName: internalName
+            )
             return try PakWorkspaceManager.summary(workspace: workspace)
         }
     }

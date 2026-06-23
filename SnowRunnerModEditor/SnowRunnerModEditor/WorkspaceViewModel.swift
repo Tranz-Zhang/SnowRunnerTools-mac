@@ -113,6 +113,36 @@ public final class WorkspaceViewModel {
         }
     }
 
+    public func resolveConflict(
+        targetArchive: ModMergeTargetArchive,
+        internalName: String,
+        selectedMod: String
+    ) async {
+        guard let workspace = summary?.workspace else { return }
+        await runConflictResolutionMutation {
+            try await service.resolveConflict(
+                workspace: workspace,
+                targetArchive: targetArchive,
+                internalName: internalName,
+                selectedMod: selectedMod
+            )
+        }
+    }
+
+    public func clearConflictResolution(
+        targetArchive: ModMergeTargetArchive,
+        internalName: String
+    ) async {
+        guard let workspace = summary?.workspace else { return }
+        await runConflictResolutionMutation {
+            try await service.clearConflictResolution(
+                workspace: workspace,
+                targetArchive: targetArchive,
+                internalName: internalName
+            )
+        }
+    }
+
     public func build() async {
         guard let workspace = summary?.workspace else { return }
         busyState = .building
@@ -136,6 +166,23 @@ public final class WorkspaceViewModel {
         do {
             summary = try await operation()
             screen = .workspace
+            busyState = .idle
+            startQuickVerify()
+        } catch {
+            errorMessage = String(describing: error)
+            busyState = .idle
+        }
+    }
+
+    private func runConflictResolutionMutation(
+        operation: @MainActor () async throws -> PakWorkspaceSummary
+    ) async {
+        busyState = .updatingMod
+        errorMessage = nil
+        buildResult = nil
+        do {
+            summary = try await operation()
+            screen = .conflictDetails
             busyState = .idle
             startQuickVerify()
         } catch {
