@@ -54,6 +54,24 @@ Example shape:
 }
 ```
 
+## Conflict Resolution Updates
+
+`conflictResolutions` changes only through explicit resolution actions or safe
+workspace cleanup:
+
+- `Use This Version` adds or replaces the saved choice for the target with the
+  selected mod.
+- `Keep One Copy` adds or replaces the saved choice for a byte-identical target
+  with the selected mod.
+- `Clear Resolution` removes the saved choice for that target.
+- Workspace open, quick verify, and build prune saved choices that no
+  longer correspond to a current multi-candidate conflict.
+
+Conflict discovery is otherwise read-only. Finding a new conflict must not
+write a resolution automatically. The manifest changes only when the user
+chooses or clears a resolution, or when old irrelevant choices are safely
+removed.
+
 ## Conflict States
 
 The user-facing model has only two states:
