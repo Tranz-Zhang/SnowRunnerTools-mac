@@ -432,7 +432,8 @@ public enum PakWorkspaceManager {
         )
         let records = try WorkspaceInitialLoadListBuilder.records(fromInitialDirectory: initialDirectory, preservingFrom: baseManifest)
         let rebuiltManifest = try LoadListBuilder.buildManifest(records: records)
-        let mapped = try mappedEntriesForEnabledMods(workspace: workspace, manifest: manifest).flatMap(\.entries)
+        let mappedMods = try mappedEntriesForEnabledMods(workspace: workspace, manifest: manifest)
+        let mapped = try resolutionAwareMappedEntries(workspace: workspace, manifest: manifest, mappedMods: mappedMods)
         let result = try ModMerger.mergeWorkspaceInitial(
             initialDirectory: initialDirectory,
             baseManifest: rebuiltManifest,
@@ -469,6 +470,35 @@ public enum PakWorkspaceManager {
             )
             return (mod: mod, entries: entries)
         }
+    }
+
+    private static func resolutionAwareMappedEntries(
+        workspace: URL,
+        manifest: PakWorkspaceManifest,
+        mappedMods: [(mod: PakWorkspaceMod, entries: [ModMappedEntry])]
+    ) throws -> [ModMappedEntry] {
+        var mutableManifest = manifest
+        let grouped = groupedMappedCandidates(mappedMods)
+        let selectedByKey = try pruneConflictResolutionsIfNeeded(
+            workspace: workspace,
+            manifest: &mutableManifest,
+            grouped: grouped
+        )
+
+        var filtered: [ModMappedEntry] = []
+        for mappedMod in mappedMods {
+            for entry in mappedMod.entries {
+                let key = MappedTargetKey(targetArchive: entry.targetArchive, internalName: entry.internalName)
+                if let selectedMod = selectedByKey[key] {
+                    if mappedMod.mod.folderName == selectedMod {
+                        filtered.append(entry)
+                    }
+                } else {
+                    filtered.append(entry)
+                }
+            }
+        }
+        return filtered
     }
 
     private struct MappedConflictCandidate {

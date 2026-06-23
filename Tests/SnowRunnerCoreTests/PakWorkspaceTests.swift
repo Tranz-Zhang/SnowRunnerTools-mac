@@ -596,6 +596,75 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(try PakReader.readUncompressedPayload(entry: entry, in: archive), Data("<Truck mod=\"true\"/>".utf8))
     }
 
+    func testWorkspaceBuildUsesSelectedConflictResolutionCandidate() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-build-resolved-conflict")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+
+        let archive = try PakReader.readArchive(at: PakWorkspacePaths.buildInitialPak(root: workspace))
+        let entry = try XCTUnwrap(archive.entries.first { $0.name == "[media]\\classes\\trucks\\same.xml" })
+        XCTAssertEqual(
+            try PakReader.readUncompressedPayload(entry: entry, in: archive),
+            Data("<Truck id=\"second\"/>".utf8)
+        )
+    }
+
+    func testWorkspaceBuildStillRejectsUnresolvedDifferentBytesConflict() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-build-unresolved-conflict")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        XCTAssertThrowsError(try PakWorkspaceManager.build(workspace: workspace)) { error in
+            XCTAssertTrue(String(describing: error).contains("[media]\\classes\\trucks\\same.xml"))
+        }
+    }
+
+    func testWorkspaceBuildPrunesStaleResolutionAndUsesRemainingSingleCandidate() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-build-prune-stale-resolution")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+        try PakWorkspaceManager.setModEnabled(workspace: workspace, folderName: "first", enabled: false)
+
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).conflictResolutions, [])
+    }
+
     func testWorkspaceVerifyRejectsModToModConflict() throws {
         let base = try makeSyntheticInitialPak()
         let workspace = try temporaryDirectory(named: "workspace-mod-conflict")
