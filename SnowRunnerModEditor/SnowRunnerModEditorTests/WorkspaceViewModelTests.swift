@@ -132,6 +132,29 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertNil(model.buildResult)
     }
 
+    func testFailedBuildClearsPreviousBuildResultAndReportsError() async {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        service.buildResult = makeBuildResult()
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+        await model.build()
+        XCTAssertNotNil(model.buildResult)
+
+        service.buildResult = nil
+        service.error = PakWorkspaceError.missingSourceCache("/tmp/workspace/.snowrunner/sources/demo.pak")
+        await model.build()
+
+        XCTAssertNil(model.buildResult)
+        XCTAssertEqual(
+            model.errorMessage,
+            "Workspace manifest references missing cached source PAK: /tmp/workspace/.snowrunner/sources/demo.pak"
+        )
+    }
+
     func testResolveConflictCallsServiceRefreshesQuickVerifyAndStaysOnConflictDetails() async throws {
         let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
         let service = FakeWorkspaceService()

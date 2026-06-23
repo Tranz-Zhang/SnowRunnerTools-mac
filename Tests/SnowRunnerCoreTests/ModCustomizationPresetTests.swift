@@ -93,6 +93,43 @@ final class ModCustomizationPresetTests: XCTestCase {
         XCTAssertFalse(text.contains("Marker=\"first\""))
     }
 
+    func testMergeRepairsDuplicateTintColorAttributesInCustomizationPresets() throws {
+        let mod = Data("""
+        <TruckSet>
+            <Truck Name="bad_tint">
+                <CustomizationPreset
+                    Id="40"
+                    TintColor1="g(45; 45; 45)"
+                    TintColor1="g(205; 178; 21)"
+                    TintColor1="g(205; 178; 21)"
+                    MaterialOverrideName="skin_00"
+                />
+                <CustomizationPreset
+                    Id="42"
+                    TintColor1="g(67; 93; 151)"
+                    TintColor1="g(200; 200; 200)"
+                    TintColor3="g(209; 204; 199)"
+                    MaterialOverrideName="skin_00"
+                />
+            </Truck>
+        </TruckSet>
+        """.utf8)
+
+        let merged = try ModCustomizationPreset.merge(
+            baseData: Data("<TruckSet/>".utf8),
+            modData: mod,
+            path: "[media]\\classes\\customization_presets\\customization_preset.xml"
+        )
+        let text = decodedUTF8(merged)
+
+        XCTAssertTrue(text.contains("TintColor1=\"g(45; 45; 45)\""))
+        XCTAssertTrue(text.contains("TintColor2=\"g(205; 178; 21)\""))
+        XCTAssertTrue(text.contains("TintColor3=\"g(205; 178; 21)\""))
+        XCTAssertTrue(text.contains("TintColor1=\"g(67; 93; 151)\""))
+        XCTAssertTrue(text.contains("TintColor2=\"g(200; 200; 200)\""))
+        XCTAssertTrue(text.contains("TintColor3=\"g(209; 204; 199)\""))
+    }
+
     func testMergeRejectsInvalidRoot() throws {
         XCTAssertThrowsError(try ModCustomizationPreset.merge(
             baseData: Data("<Invalid/>".utf8),

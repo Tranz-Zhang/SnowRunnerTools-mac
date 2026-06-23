@@ -16,6 +16,9 @@ public struct WorkspaceOperationView: View {
             modsSection
                 .layoutPriority(1)
             quickVerifySection
+            if let error = viewModel.errorMessage {
+                errorSection(error)
+            }
             buildSection
         }
         .padding(20)
@@ -230,8 +233,8 @@ public struct WorkspaceOperationView: View {
                         .padding(.trailing, 5)
                         .padding(.leading, 2)
                 } else {
-                    Image(systemName: viewModel.buildResult == nil ? "archivebox.fill" : "archivebox")
-                        .foregroundStyle(viewModel.buildResult == nil ?  .green : .gray)
+                    Image(systemName: viewModel.buildResult == nil ? "archivebox" : "archivebox.fill")
+                        .foregroundStyle(viewModel.buildResult == nil ? .gray : .green)
                         .font(.system(size: 20))
                 }
                 
@@ -266,6 +269,22 @@ public struct WorkspaceOperationView: View {
                     .buttonStyle(SRButtonStyle(colorStyle: .main, size: .small, minWidth: 100))
                     .disabled(viewModel.isBusy)
                 }
+            }
+        }
+    }
+
+    private func errorSection(_ error: String) -> some View {
+        panel {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .font(.system(size: 18))
+                    .padding(.top, 2)
+                Text(error)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

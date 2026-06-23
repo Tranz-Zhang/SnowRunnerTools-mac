@@ -147,6 +147,7 @@ public final class WorkspaceViewModel {
         guard let workspace = summary?.workspace else { return }
         busyState = .building
         errorMessage = nil
+        buildResult = nil
         do {
             buildResult = try await service.build(workspace: workspace)
             summary = try await service.openWorkspace(workspace)
