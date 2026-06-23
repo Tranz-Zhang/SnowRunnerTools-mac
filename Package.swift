@@ -8,7 +8,6 @@ let package = Package(
     ],
     products: [
         .executable(name: "snowrunner-tool", targets: ["SnowRunnerToolCLI"]),
-        .executable(name: "SnowRunnerModEditor", targets: ["SnowRunnerModEditor"]),
         .library(name: "SnowRunnerCore", targets: ["SnowRunnerCore"])
     ],
     targets: [
@@ -22,17 +21,9 @@ let package = Package(
             name: "SnowRunnerToolCLI",
             dependencies: ["SnowRunnerCore"]
         ),
-        .executableTarget(
-            name: "SnowRunnerModEditor",
-            dependencies: ["SnowRunnerCore"]
-        ),
         .testTarget(
             name: "SnowRunnerCoreTests",
             dependencies: ["SnowRunnerCore"]
-        ),
-        .testTarget(
-            name: "SnowRunnerModEditorTests",
-            dependencies: ["SnowRunnerModEditor", "SnowRunnerCore"]
         )
     ]
 )
