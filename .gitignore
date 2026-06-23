@@ -11,5 +11,4 @@ workspace
 workspace_v2
 .superpowers
 .worktrees/
-./**/xcuserdata
-.swiftpm/**/xcuserdata
+**/xcuserdata/

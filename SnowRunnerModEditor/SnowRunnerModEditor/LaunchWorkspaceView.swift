@@ -10,6 +10,7 @@ public struct LaunchWorkspaceView: View {
 
     public var body: some View {
         VStack(spacing: 20) {
+            Spacer()
             VStack(spacing: 8) {
                 Text("Choose a SnowRunner workspace")
                     .font(.title2.weight(.semibold))
@@ -18,21 +19,21 @@ public struct LaunchWorkspaceView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-
+            Spacer()
             VStack(spacing: 10) {
                 Button("Create Workspace From initial.pak") {
                     createWorkspace()
                 }
-                .buttonStyle(LaunchActionButtonStyle(colorStyle: .main))
+                .buttonStyle(SRButtonStyle(colorStyle: .main, minWidth: 250))
                 .disabled(viewModel.isBusy)
 
                 Button("Open Existing Workspace Folder") {
                     openWorkspace()
                 }
-                .buttonStyle(LaunchActionButtonStyle())
+                .buttonStyle(SRButtonStyle(minWidth: 250))
                 .disabled(viewModel.isBusy)
             }
-
+            Spacer()
             if viewModel.isBusy {
                 ProgressView()
             }

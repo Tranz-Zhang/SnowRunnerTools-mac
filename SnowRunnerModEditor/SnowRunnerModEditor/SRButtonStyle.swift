@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct LaunchActionButtonStyle: ButtonStyle {
+struct SRButtonStyle: ButtonStyle {
     enum ColorStyle {
         case main
         case subtle
@@ -52,13 +52,14 @@ struct LaunchActionButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     var colorStyle: ColorStyle = .subtle
     var size: Size = .regular
+    var minWidth: CGFloat?
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(size.font)
             .foregroundStyle(foregroundStyle)
             .padding(.horizontal, size.horizontalPadding)
-            .frame(minHeight: size.minHeight)
+            .frame(minWidth: minWidth, minHeight: size.minHeight)
             .background {
                 RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
                     .fill(backgroundStyle)
@@ -81,7 +82,7 @@ struct LaunchActionButtonStyle: ButtonStyle {
         case .normal:
             return Color(nsColor: .darkGray)
         case .destructive:
-            return .white
+            return .red
         }
     }
 
@@ -94,7 +95,7 @@ struct LaunchActionButtonStyle: ButtonStyle {
         case .normal:
             return .white
         case .destructive:
-            return .red
+            return .red.opacity(0.05)
         }
     }
 
@@ -107,7 +108,7 @@ struct LaunchActionButtonStyle: ButtonStyle {
         case .normal:
             return Color(nsColor: .lightGray).opacity(0.5)
         case .destructive:
-            return .clear
+            return .red
         }
     }
 }

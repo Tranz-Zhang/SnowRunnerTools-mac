@@ -22,13 +22,12 @@ public struct WorkspaceOperationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    // MARK: Workspace Section
+    
     private var workspaceSection: some View {
         panel {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Workspace")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
                     Text(viewModel.summary?.workspace.lastPathComponent ?? "Workspace")
                         .font(.headline)
                     Text(viewModel.summary?.workspace.path ?? "")
@@ -37,20 +36,30 @@ public struct WorkspaceOperationView: View {
                         .textSelection(.enabled)
                 }
                 Spacer()
-                Button("Reveal Workspace") {
-                    if let workspace = viewModel.summary?.workspace {
-                        finder.reveal(workspace)
+                HStack(spacing: 15) {
+                    Button {
+                        if let workspace = viewModel.summary?.workspace {
+                            finder.reveal(workspace)
+                        }
+                    } label: {
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(.gray)
                     }
+                    .buttonStyle(SRButtonStyle(colorStyle: .normal, size: .small))
+                    .help("Reveal")
+                    .accessibilityLabel("Reveal Workspace")
+                    
+                    Button("Close Workspace") {
+                        viewModel.closeWorkspace()
+                    }
+                    .buttonStyle(SRButtonStyle(colorStyle: .normal, size: .small, minWidth: 120))
+                    .disabled(viewModel.isBusy)
                 }
-                .buttonStyle(LaunchActionButtonStyle(size: .small))
-                Button("Close Workspace") {
-                    viewModel.closeWorkspace()
-                }
-                .buttonStyle(LaunchActionButtonStyle(size: .small))
-                .disabled(viewModel.isBusy)
             }
         }
     }
+    
+    // MARK: Mod Section
 
     private var modsSection: some View {
         panel {
@@ -67,7 +76,7 @@ public struct WorkspaceOperationView: View {
                     Button("Add Mods") {
                         addMods()
                     }
-                    .buttonStyle(LaunchActionButtonStyle(colorStyle: .main, size: .small))
+                    .buttonStyle(SRButtonStyle(colorStyle: .main, size: .small, minWidth: 100))
                     .disabled(viewModel.isBusy)
                 }
 
@@ -98,63 +107,7 @@ public struct WorkspaceOperationView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
-
-    private var quickVerifySection: some View {
-        panel {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Quick Verify")
-                        .font(.headline)
-                    Text(quickVerifyText)
-                        .font(.callout)
-                        .foregroundStyle(hasQuickVerifyConflicts ? .red : .secondary)
-                    Text("Checks duplicate mapped targets between enabled mods. Mod-over-initial replacements are ignored.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if viewModel.busyState == .quickVerifying {
-                    ProgressView()
-                }
-                if hasQuickVerifyConflicts {
-                    Button("Show Conflict Details") {
-                        viewModel.showConflictDetails()
-                    }
-                    .buttonStyle(LaunchActionButtonStyle(size: .small))
-                }
-            }
-        }
-    }
-
-    private var buildSection: some View {
-        panel {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Build Output")
-                        .font(.headline)
-                    Text("build/initial.pak")
-                        .font(.callout.weight(.semibold))
-                    Text("Full verification runs before publishing build/initial.pak and workspace-build-report.md.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Build PAK") {
-                    Task { await viewModel.build() }
-                }
-                .buttonStyle(LaunchActionButtonStyle(colorStyle: .main, size: .small))
-                .disabled(viewModel.isBusy)
-                Button("Review Build") {
-                    if let output = viewModel.summary?.buildInitialPak {
-                        finder.reveal(output)
-                    }
-                }
-                .buttonStyle(LaunchActionButtonStyle(size: .small))
-                .disabled(viewModel.summary == nil || viewModel.buildResult == nil)
-            }
-        }
-    }
-
+    
     private var modCountText: String {
         let mods = viewModel.summary?.mods ?? []
         let active = mods.filter(\.enabled).count
@@ -162,27 +115,13 @@ public struct WorkspaceOperationView: View {
         return "\(active) active, \(disabled) disabled"
     }
 
-    private var hasQuickVerifyConflicts: Bool {
-        !(viewModel.quickVerifyResult?.conflicts.isEmpty ?? true)
-    }
-
-    private var quickVerifyText: String {
-        guard let result = viewModel.quickVerifyResult else { return "Checking..." }
-        return result.conflicts.isEmpty ? "No conflicts found" : "Conflicts found"
-    }
-
+    
     private func addMods() {
         let urls = panels.chooseModPaks()
         guard !urls.isEmpty else { return }
         Task { await viewModel.addMods(urls) }
     }
-
-    private func tableHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-    }
-
+    
     private func modRow(_ mod: PakWorkspaceModSummary) -> some View {
         GridRow {
             Toggle("Enabled", isOn: modEnabledBinding(for: mod))
@@ -227,6 +166,107 @@ public struct WorkspaceOperationView: View {
         )
     }
 
+    
+    // MARK: Quick Verify Section
+
+    private var quickVerifySection: some View {
+        panel {
+            HStack(alignment: .center, spacing: 15) {
+                if viewModel.busyState == .quickVerifying {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 5)
+                        .padding(.leading, 2)
+                } else {
+                    Image(systemName: hasQuickVerifyConflicts ? "xmark.circle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(hasQuickVerifyConflicts ?  .red : .green)
+                        .font(.system(size: 20))
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Quick Verify")
+                        .font(.headline)
+                    Text(quickVerifyText)
+                        .font(.callout)
+                        .foregroundStyle(hasQuickVerifyConflicts ? .red : .secondary)
+                }
+                Spacer()
+                if hasQuickVerifyConflicts {
+                    Button("Show Conflict Details") {
+                        viewModel.showConflictDetails()
+                    }
+                    .buttonStyle(SRButtonStyle(colorStyle:.destructive, size: .small))
+                }
+            }
+        }
+    }
+    
+    private var hasQuickVerifyConflicts: Bool {
+        !(viewModel.quickVerifyResult?.conflicts.isEmpty ?? true)
+    }
+
+    private var quickVerifyText: String {
+        guard let result = viewModel.quickVerifyResult else { return "Checking..." }
+        return result.conflicts.isEmpty ? "No conflicts found" : "Conflicts found"
+    }
+
+    // MARK: Build Section
+
+    private var buildSection: some View {
+        panel {
+            HStack(spacing: 15) {
+                if viewModel.busyState == .building {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 5)
+                        .padding(.leading, 2)
+                } else {
+                    Image(systemName: viewModel.buildResult == nil ? "archivebox.fill" : "archivebox")
+                        .foregroundStyle(viewModel.buildResult == nil ?  .green : .gray)
+                        .font(.system(size: 20))
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Build Output")
+                        .font(.headline)
+                    Text("build/initial.pak")
+                        .font(.callout.weight(.semibold))
+                    Text("Full verification runs before publishing build/initial.pak and workspace-build-report.md.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                HStack(spacing: 10) {
+                    if (viewModel.summary != nil && viewModel.buildResult != nil) {
+                        Button {
+                            if let output = viewModel.summary?.buildInitialPak {
+                                finder.reveal(output)
+                            }
+                        } label: {
+                            Image(systemName: "folder.fill")
+                                .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(SRButtonStyle(colorStyle: .normal, size: .small))
+                        .help("Reveal")
+                        .accessibilityLabel("Reveal Build")
+                    }
+                    
+                    Button("Build PAK") {
+                        Task { await viewModel.build() }
+                    }
+                    .buttonStyle(SRButtonStyle(colorStyle: .main, size: .small, minWidth: 100))
+                    .disabled(viewModel.isBusy)
+                }
+            }
+        }
+    }
+
+    
+    private func tableHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(14)
@@ -268,6 +308,7 @@ private enum WorkspaceOperationPreview {
                 mods: ["azov-tuning-pack", "loadstar-rescue-kit"]
             )
         ])
+        
         return model
     }
 

@@ -22,37 +22,37 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		DE5415C92FEA372A00117FF0 /* SnowRunnerModEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnowRunnerModEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000003 /* SnowRunnerModEditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnowRunnerModEditorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE5415C92FEA372A00117FF0 /* SnowRunnerModEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnowRunnerModEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		DE5415CB2FEA372A00117FF0 /* SnowRunnerModEditor */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = SnowRunnerModEditor;
-			sourceTree = "<group>";
-		};
 		A10000000000000000000004 /* SnowRunnerModEditorTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SnowRunnerModEditorTests;
 			sourceTree = "<group>";
 		};
+		DE5415CB2FEA372A00117FF0 /* SnowRunnerModEditor */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SnowRunnerModEditor;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		DE5415C62FEA372A00117FF0 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A10000000000000000000001 /* SnowRunnerCore in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A10000000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000002 /* SnowRunnerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DE5415C62FEA372A00117FF0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* SnowRunnerCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,29 +80,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		DE5415C82FEA372A00117FF0 /* SnowRunnerModEditor */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = DE5415D52FEA372A00117FF0 /* Build configuration list for PBXNativeTarget "SnowRunnerModEditor" */;
-			buildPhases = (
-				DE5415C52FEA372A00117FF0 /* Sources */,
-				DE5415C62FEA372A00117FF0 /* Frameworks */,
-				DE5415C72FEA372A00117FF0 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				DE5415CB2FEA372A00117FF0 /* SnowRunnerModEditor */,
-			);
-			name = SnowRunnerModEditor;
-			packageProductDependencies = (
-				A1000000000000000000000F /* SnowRunnerCore */,
-			);
-			productName = SnowRunnerModEditor;
-			productReference = DE5415C92FEA372A00117FF0 /* SnowRunnerModEditor.app */;
-			productType = "com.apple.product-type.application";
-		};
 		A10000000000000000000008 /* SnowRunnerModEditorTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A1000000000000000000000D /* Build configuration list for PBXNativeTarget "SnowRunnerModEditorTests" */;
@@ -127,6 +104,29 @@
 			productReference = A10000000000000000000003 /* SnowRunnerModEditorTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		DE5415C82FEA372A00117FF0 /* SnowRunnerModEditor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DE5415D52FEA372A00117FF0 /* Build configuration list for PBXNativeTarget "SnowRunnerModEditor" */;
+			buildPhases = (
+				DE5415C52FEA372A00117FF0 /* Sources */,
+				DE5415C62FEA372A00117FF0 /* Frameworks */,
+				DE5415C72FEA372A00117FF0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DE5415CB2FEA372A00117FF0 /* SnowRunnerModEditor */,
+			);
+			name = SnowRunnerModEditor;
+			packageProductDependencies = (
+				A1000000000000000000000F /* SnowRunnerCore */,
+			);
+			productName = SnowRunnerModEditor;
+			productReference = DE5415C92FEA372A00117FF0 /* SnowRunnerModEditor.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -137,12 +137,12 @@
 				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
-					DE5415C82FEA372A00117FF0 = {
-						CreatedOnToolsVersion = 16.4;
-					};
 					A10000000000000000000008 = {
 						CreatedOnToolsVersion = 16.4;
 						TestTargetID = DE5415C82FEA372A00117FF0;
+					};
+					DE5415C82FEA372A00117FF0 = {
+						CreatedOnToolsVersion = 16.4;
 					};
 				};
 			};
@@ -170,14 +170,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		DE5415C72FEA372A00117FF0 /* Resources */ = {
+		A10000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A10000000000000000000006 /* Resources */ = {
+		DE5415C72FEA372A00117FF0 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -187,14 +187,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		DE5415C52FEA372A00117FF0 /* Sources */ = {
+		A10000000000000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A10000000000000000000007 /* Sources */ = {
+		DE5415C52FEA372A00117FF0 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -212,6 +212,54 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A1000000000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.3;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bychance.SnowRunnerModEditorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SnowRunnerModEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SnowRunnerModEditor";
+			};
+			name = Debug;
+		};
+		A1000000000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.3;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bychance.SnowRunnerModEditorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SnowRunnerModEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SnowRunnerModEditor";
+			};
+			name = Release;
+		};
 		DE5415D32FEA372A00117FF0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -374,57 +422,18 @@
 			};
 			name = Release;
 		};
-		A1000000000000000000000B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 15.3;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.bychance.SnowRunnerModEditorTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SnowRunnerModEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SnowRunnerModEditor";
-			};
-			name = Debug;
-		};
-		A1000000000000000000000C /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 15.3;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.bychance.SnowRunnerModEditorTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SnowRunnerModEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SnowRunnerModEditor";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A1000000000000000000000D /* Build configuration list for PBXNativeTarget "SnowRunnerModEditorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000000B /* Debug */,
+				A1000000000000000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		DE5415C42FEA372A00117FF0 /* Build configuration list for PBXProject "SnowRunnerModEditor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -439,15 +448,6 @@
 			buildConfigurations = (
 				DE5415D62FEA372A00117FF0 /* Debug */,
 				DE5415D72FEA372A00117FF0 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		A1000000000000000000000D /* Build configuration list for PBXNativeTarget "SnowRunnerModEditorTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A1000000000000000000000B /* Debug */,
-				A1000000000000000000000C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
