@@ -36,16 +36,78 @@ public struct WorkspaceQuickVerifyResult: Equatable {
     public init(conflicts: [WorkspaceModConflict]) {
         self.conflicts = conflicts
     }
+
+    public var unresolvedConflictCount: Int {
+        conflicts.filter { !$0.isResolved }.count
+    }
+
+    public var resolvedConflictCount: Int {
+        conflicts.filter(\.isResolved).count
+    }
 }
 
 public struct WorkspaceModConflict: Equatable, Identifiable {
-    public var id: String { targetPath }
+    public var id: String { "\(targetArchive.rawValue):\(internalName)" }
+    public var targetArchive: ModMergeTargetArchive
+    public var internalName: String
     public var targetPath: String
-    public var mods: [String]
+    public var candidates: [WorkspaceModConflictCandidate]
+    public var selectedMod: String?
+
+    public var mods: [String] {
+        candidates.map(\.modFolderName).sorted()
+    }
+
+    public var isResolved: Bool {
+        selectedMod != nil
+    }
+
+    public var isByteIdentical: Bool {
+        Set(candidates.map(\.sha256)).count <= 1
+    }
+
+    public init(
+        targetArchive: ModMergeTargetArchive,
+        internalName: String,
+        targetPath: String,
+        candidates: [WorkspaceModConflictCandidate],
+        selectedMod: String? = nil
+    ) {
+        self.targetArchive = targetArchive
+        self.internalName = internalName
+        self.targetPath = targetPath
+        self.candidates = candidates
+        self.selectedMod = selectedMod
+    }
 
     public init(targetPath: String, mods: [String]) {
+        self.targetArchive = .initial
+        self.internalName = targetPath
         self.targetPath = targetPath
-        self.mods = mods
+        self.candidates = mods.sorted().map {
+            WorkspaceModConflictCandidate(
+                modFolderName: $0,
+                originalName: "",
+                byteSize: 0,
+                sha256: ""
+            )
+        }
+        self.selectedMod = nil
+    }
+}
+
+public struct WorkspaceModConflictCandidate: Equatable, Identifiable {
+    public var id: String { "\(modFolderName):\(originalName)" }
+    public var modFolderName: String
+    public var originalName: String
+    public var byteSize: Int
+    public var sha256: String
+
+    public init(modFolderName: String, originalName: String, byteSize: Int, sha256: String) {
+        self.modFolderName = modFolderName
+        self.originalName = originalName
+        self.byteSize = byteSize
+        self.sha256 = sha256
     }
 }
 
@@ -305,20 +367,23 @@ public enum PakWorkspaceManager {
     }
 
     public static func quickVerify(workspace: URL) throws -> WorkspaceQuickVerifyResult {
-        let manifest = try loadManifest(workspace: workspace)
+        var manifest = try loadManifest(workspace: workspace)
         let mappedMods = try mappedEntriesForEnabledMods(workspace: workspace, manifest: manifest)
-        var modsByTarget: [MappedTargetKey: Set<String>] = [:]
+        let grouped = groupedMappedCandidates(mappedMods)
+        let resolutionResult = try pruneConflictResolutionsIfNeeded(
+            workspace: workspace,
+            manifest: &manifest,
+            grouped: grouped
+        )
 
-        for mappedMod in mappedMods {
-            for entry in mappedMod.entries {
-                let key = MappedTargetKey(targetArchive: entry.targetArchive, internalName: entry.internalName)
-                modsByTarget[key, default: []].insert(mappedMod.mod.folderName)
+        let conflicts = grouped.values
+            .filter { $0.count > 1 }
+            .map { candidates in
+                makeWorkspaceConflict(
+                    candidates: candidates,
+                    selectedMod: resolutionResult[candidates[0].key]
+                )
             }
-        }
-
-        let conflicts = modsByTarget
-            .filter { $0.value.count > 1 }
-            .map { WorkspaceModConflict(targetPath: targetPathDisplay(for: $0.key), mods: $0.value.sorted()) }
             .sorted { $0.targetPath < $1.targetPath }
 
         return WorkspaceQuickVerifyResult(conflicts: conflicts)
@@ -404,6 +469,84 @@ public enum PakWorkspaceManager {
             )
             return (mod: mod, entries: entries)
         }
+    }
+
+    private struct MappedConflictCandidate {
+        var key: MappedTargetKey
+        var mod: PakWorkspaceMod
+        var entry: ModMappedEntry
+
+        var candidate: WorkspaceModConflictCandidate {
+            WorkspaceModConflictCandidate(
+                modFolderName: mod.folderName,
+                originalName: entry.originalName,
+                byteSize: entry.data.count,
+                sha256: ModArchiveMapper.sha256Hex(uncompressedPayload: entry.data)
+            )
+        }
+    }
+
+    private static func groupedMappedCandidates(
+        _ mappedMods: [(mod: PakWorkspaceMod, entries: [ModMappedEntry])]
+    ) -> [MappedTargetKey: [MappedConflictCandidate]] {
+        var grouped: [MappedTargetKey: [MappedConflictCandidate]] = [:]
+        for mappedMod in mappedMods {
+            for entry in mappedMod.entries {
+                let key = MappedTargetKey(targetArchive: entry.targetArchive, internalName: entry.internalName)
+                grouped[key, default: []].append(MappedConflictCandidate(key: key, mod: mappedMod.mod, entry: entry))
+            }
+        }
+        return grouped
+    }
+
+    private static func makeWorkspaceConflict(
+        candidates: [MappedConflictCandidate],
+        selectedMod: String?
+    ) -> WorkspaceModConflict {
+        let sortedCandidates = candidates.sorted {
+            if $0.mod.folderName != $1.mod.folderName {
+                return $0.mod.folderName < $1.mod.folderName
+            }
+            return $0.entry.originalName < $1.entry.originalName
+        }
+        let key = sortedCandidates[0].key
+        return WorkspaceModConflict(
+            targetArchive: key.targetArchive,
+            internalName: key.internalName,
+            targetPath: targetPathDisplay(for: key),
+            candidates: sortedCandidates.map(\.candidate),
+            selectedMod: selectedMod
+        )
+    }
+
+    private static func pruneConflictResolutionsIfNeeded(
+        workspace: URL,
+        manifest: inout PakWorkspaceManifest,
+        grouped: [MappedTargetKey: [MappedConflictCandidate]]
+    ) throws -> [MappedTargetKey: String] {
+        var validSelections: [MappedTargetKey: String] = [:]
+        var pruned = false
+        var kept: [PakWorkspaceConflictResolution] = []
+
+        for resolution in manifest.conflictResolutions {
+            let key = MappedTargetKey(targetArchive: resolution.targetArchive, internalName: resolution.internalName)
+            guard let candidates = grouped[key],
+                  candidates.count > 1,
+                  candidates.contains(where: { $0.mod.folderName == resolution.selectedMod })
+            else {
+                pruned = true
+                continue
+            }
+            kept.append(resolution)
+            validSelections[key] = resolution.selectedMod
+        }
+
+        if pruned {
+            manifest.conflictResolutions = kept
+            try commitManifestOnly(workspace: workspace, manifest: manifest)
+        }
+
+        return validSelections
     }
 
     private struct MappedTargetKey: Hashable {

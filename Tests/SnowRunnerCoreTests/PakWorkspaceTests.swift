@@ -737,12 +737,10 @@ final class PakWorkspaceTests: XCTestCase {
 
         let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
 
-        XCTAssertEqual(result.conflicts, [
-            WorkspaceModConflict(
-                targetPath: "[media]\\classes\\trucks\\same.xml",
-                mods: ["first", "second"]
-            )
-        ])
+        let conflict = try XCTUnwrap(result.conflicts.first)
+        XCTAssertEqual(conflict.targetPath, "[media]\\classes\\trucks\\same.xml")
+        XCTAssertEqual(conflict.mods, ["first", "second"])
+        XCTAssertFalse(conflict.isResolved)
     }
 
     func testWorkspaceQuickVerifyFlagsDuplicateTargetsWithIdenticalBytes() throws {
@@ -777,12 +775,123 @@ final class PakWorkspaceTests: XCTestCase {
 
         let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
 
-        XCTAssertEqual(result.conflicts, [
-            WorkspaceModConflict(
-                targetPath: "shared_textures_base.pak:[textures]\\foo.dds",
-                mods: ["first", "second"]
-            )
+        let conflict = try XCTUnwrap(result.conflicts.first)
+        XCTAssertEqual(conflict.targetPath, "shared_textures_base.pak:[textures]\\foo.dds")
+        XCTAssertEqual(conflict.mods, ["first", "second"])
+        XCTAssertTrue(conflict.isByteIdentical)
+    }
+
+    func testWorkspaceQuickVerifyIncludesCandidateDetailsForUnresolvedConflict() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-conflict-details")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
         ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        let conflict = try XCTUnwrap(result.conflicts.first)
+        XCTAssertFalse(conflict.isResolved)
+        XCTAssertFalse(conflict.isByteIdentical)
+        XCTAssertEqual(conflict.targetArchive, .initial)
+        XCTAssertEqual(conflict.internalName, "[media]\\classes\\trucks\\same.xml")
+        XCTAssertEqual(conflict.targetPath, "[media]\\classes\\trucks\\same.xml")
+        XCTAssertEqual(conflict.mods, ["first", "second"])
+        XCTAssertEqual(conflict.candidates.map(\.modFolderName), ["first", "second"])
+        XCTAssertEqual(conflict.candidates.map(\.originalName), [
+            "classes/trucks/same.xml",
+            "classes/trucks/same.xml"
+        ])
+        XCTAssertTrue(conflict.candidates.allSatisfy { $0.byteSize > 0 })
+        XCTAssertTrue(conflict.candidates.allSatisfy { $0.sha256.count == 64 })
+        XCTAssertNil(conflict.selectedMod)
+        XCTAssertEqual(result.unresolvedConflictCount, 1)
+        XCTAssertEqual(result.resolvedConflictCount, 0)
+    }
+
+    func testWorkspaceQuickVerifyMarksValidResolutionAsResolved() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-resolved-conflict")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        let conflict = try XCTUnwrap(result.conflicts.first)
+        XCTAssertTrue(conflict.isResolved)
+        XCTAssertEqual(conflict.selectedMod, "second")
+        XCTAssertEqual(result.unresolvedConflictCount, 0)
+        XCTAssertEqual(result.resolvedConflictCount, 1)
+    }
+
+    func testWorkspaceQuickVerifyPrunesResolutionWhenNoCurrentConflictRemains() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-prune-resolved-conflict")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+        try PakWorkspaceManager.setModEnabled(workspace: workspace, folderName: "first", enabled: false)
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [])
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).conflictResolutions, [])
+    }
+
+    func testWorkspaceQuickVerifyTreatsInvalidSavedChoiceAsUnresolved() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-invalid-choice")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"first\"/>".utf8)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/trucks/same.xml": Data("<Truck id=\"second\"/>".utf8)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "missing"
+        )
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        let conflict = try XCTUnwrap(result.conflicts.first)
+        XCTAssertFalse(conflict.isResolved)
+        XCTAssertNil(conflict.selectedMod)
+        XCTAssertEqual(result.unresolvedConflictCount, 1)
+        XCTAssertEqual(result.resolvedConflictCount, 0)
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).conflictResolutions, [])
     }
 
     func testWorkspaceQuickVerifyIgnoresDisabledMods() throws {
