@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 import zlib
 
-public enum ModMergeTargetArchive: String, Equatable {
+public enum ModMergeTargetArchive: String, Codable, Equatable, Hashable {
     case initial = "initial.pak"
     case sharedTexturesBase = "shared_textures_base.pak"
     case sharedTextures = "shared_textures.pak"

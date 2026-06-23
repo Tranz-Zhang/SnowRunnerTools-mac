@@ -5,12 +5,53 @@ public struct PakWorkspaceManifest: Codable, Equatable {
     public var initialSourcePath: String
     public var mods: [PakWorkspaceMod]
     public var policy: PakWorkspacePolicy
+    public var conflictResolutions: [PakWorkspaceConflictResolution]
 
-    public init(version: Int, initialSourcePath: String, mods: [PakWorkspaceMod], policy: PakWorkspacePolicy) {
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case initialSourcePath
+        case mods
+        case policy
+        case conflictResolutions
+    }
+
+    public init(
+        version: Int,
+        initialSourcePath: String,
+        mods: [PakWorkspaceMod],
+        policy: PakWorkspacePolicy,
+        conflictResolutions: [PakWorkspaceConflictResolution] = []
+    ) {
         self.version = version
         self.initialSourcePath = initialSourcePath
         self.mods = mods
         self.policy = policy
+        self.conflictResolutions = conflictResolutions
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        initialSourcePath = try container.decode(String.self, forKey: .initialSourcePath)
+        mods = try container.decode([PakWorkspaceMod].self, forKey: .mods)
+        policy = try container.decode(PakWorkspacePolicy.self, forKey: .policy)
+        conflictResolutions = try container.decodeIfPresent(
+            [PakWorkspaceConflictResolution].self,
+            forKey: .conflictResolutions
+        ) ?? []
+    }
+}
+
+public struct PakWorkspaceConflictResolution: Codable, Equatable, Identifiable {
+    public var id: String { "\(targetArchive.rawValue):\(internalName)" }
+    public var targetArchive: ModMergeTargetArchive
+    public var internalName: String
+    public var selectedMod: String
+
+    public init(targetArchive: ModMergeTargetArchive, internalName: String, selectedMod: String) {
+        self.targetArchive = targetArchive
+        self.internalName = internalName
+        self.selectedMod = selectedMod
     }
 }
 

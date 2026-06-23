@@ -130,6 +130,43 @@ public enum PakWorkspaceManager {
         try commitManifestOnly(workspace: workspace, manifest: manifest)
     }
 
+    public static func resolveConflict(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String,
+        selectedMod: String
+    ) throws {
+        var manifest = try loadManifest(workspace: workspace)
+        let resolution = PakWorkspaceConflictResolution(
+            targetArchive: targetArchive,
+            internalName: internalName,
+            selectedMod: selectedMod
+        )
+        manifest.conflictResolutions.removeAll {
+            $0.targetArchive == targetArchive && $0.internalName == internalName
+        }
+        manifest.conflictResolutions.append(resolution)
+        manifest.conflictResolutions.sort {
+            if $0.targetArchive.rawValue != $1.targetArchive.rawValue {
+                return $0.targetArchive.rawValue < $1.targetArchive.rawValue
+            }
+            return $0.internalName < $1.internalName
+        }
+        try commitManifestOnly(workspace: workspace, manifest: manifest)
+    }
+
+    public static func clearConflictResolution(
+        workspace: URL,
+        targetArchive: ModMergeTargetArchive,
+        internalName: String
+    ) throws {
+        var manifest = try loadManifest(workspace: workspace)
+        manifest.conflictResolutions.removeAll {
+            $0.targetArchive == targetArchive && $0.internalName == internalName
+        }
+        try commitManifestOnly(workspace: workspace, manifest: manifest)
+    }
+
     public static func removeMod(workspace: URL, folderName: String) throws {
         var manifest = try loadManifest(workspace: workspace)
         guard let index = manifest.mods.firstIndex(where: { $0.folderName == folderName }) else {

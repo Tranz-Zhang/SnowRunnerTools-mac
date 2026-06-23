@@ -631,6 +631,98 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertGreaterThan(result.plan.mappedModEntryCount, 0)
     }
 
+    func testWorkspaceManifestDefaultsConflictResolutionsForExistingManifest() throws {
+        let workspace = try temporaryDirectory(named: "workspace-manifest-default-resolutions")
+        let manifestURL = PakWorkspacePaths.manifestURL(root: workspace)
+        let json = """
+        {
+          "initialSourcePath" : "/game/initial.pak",
+          "mods" : [],
+          "policy" : {
+            "allowInitialOverwrite" : true,
+            "textureMode" : "inlineInitial"
+          },
+          "version" : 1
+        }
+        """
+        try json.data(using: .utf8)!.write(to: manifestURL)
+
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+
+        XCTAssertEqual(manifest.conflictResolutions, [])
+    }
+
+    func testWorkspaceResolveConflictWritesSelectedModToManifest() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-resolve-conflict-manifest")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "first"
+        )
+
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.conflictResolutions, [
+            PakWorkspaceConflictResolution(
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\same.xml",
+                selectedMod: "first"
+            )
+        ])
+    }
+
+    func testWorkspaceClearConflictResolutionRemovesSavedChoice() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-clear-conflict-manifest")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "first"
+        )
+
+        try PakWorkspaceManager.clearConflictResolution(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml"
+        )
+
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.conflictResolutions, [])
+    }
+
+    func testWorkspaceResolveConflictReplacesExistingChoiceForTarget() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-replace-conflict-manifest")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "first"
+        )
+
+        try PakWorkspaceManager.resolveConflict(
+            workspace: workspace,
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.conflictResolutions, [
+            PakWorkspaceConflictResolution(
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\same.xml",
+                selectedMod: "second"
+            )
+        ])
+    }
+
     func testWorkspaceQuickVerifyFlagsDuplicateTargetsWithDifferentBytes() throws {
         let base = try makeSyntheticInitialPak()
         let workspace = try temporaryDirectory(named: "workspace-quick-conflict-different")
