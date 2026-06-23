@@ -190,23 +190,33 @@ public struct WorkspaceOperationView: View {
                         .foregroundStyle(hasQuickVerifyConflicts ? .red : .secondary)
                 }
                 Spacer()
-                if hasQuickVerifyConflicts {
+                if hasAnyQuickVerifyConflicts {
                     Button("Show Conflict Details") {
                         viewModel.showConflictDetails()
                     }
-                    .buttonStyle(SRButtonStyle(colorStyle:.destructive, size: .small))
+                    .buttonStyle(SRButtonStyle(colorStyle: hasQuickVerifyConflicts ? .destructive : .normal, size: .small))
                 }
             }
         }
     }
     
     private var hasQuickVerifyConflicts: Bool {
+        (viewModel.quickVerifyResult?.unresolvedConflictCount ?? 0) > 0
+    }
+
+    private var hasAnyQuickVerifyConflicts: Bool {
         !(viewModel.quickVerifyResult?.conflicts.isEmpty ?? true)
     }
 
     private var quickVerifyText: String {
         guard let result = viewModel.quickVerifyResult else { return "Checking..." }
-        return result.conflicts.isEmpty ? "No conflicts found" : "Conflicts found"
+        if result.conflicts.isEmpty {
+            return "No conflicts found"
+        }
+        if result.unresolvedConflictCount == 0 {
+            return "All conflicts resolved"
+        }
+        return "\(result.unresolvedConflictCount) unresolved conflict\(result.unresolvedConflictCount == 1 ? "" : "s")"
     }
 
     // MARK: Build Section
@@ -304,8 +314,23 @@ private enum WorkspaceOperationPreview {
         )
         model.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
             WorkspaceModConflict(
-                targetPath: "initial.pak/classes/trucks/azov_64131.xml",
-                mods: ["azov-tuning-pack", "loadstar-rescue-kit"]
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\trucks\\azov_64131.xml",
+                targetPath: "[media]\\classes\\trucks\\azov_64131.xml",
+                candidates: [
+                    WorkspaceModConflictCandidate(modFolderName: "azov-tuning-pack", originalName: "classes/trucks/azov_64131.xml", byteSize: 2_048, sha256: "aaaaaaaaaaaa0000000000000000000000000000000000000000000000000000"),
+                    WorkspaceModConflictCandidate(modFolderName: "loadstar-rescue-kit", originalName: "classes/trucks/azov_64131.xml", byteSize: 2_212, sha256: "bbbbbbbbbbbb0000000000000000000000000000000000000000000000000000")
+                ]
+            ),
+            WorkspaceModConflict(
+                targetArchive: .initial,
+                internalName: "[media]\\classes\\wheels\\offroad.xml",
+                targetPath: "[media]\\classes\\wheels\\offroad.xml",
+                candidates: [
+                    WorkspaceModConflictCandidate(modFolderName: "loadstar-rescue-kit", originalName: "classes/wheels/offroad.xml", byteSize: 1_024, sha256: "cccccccccccc0000000000000000000000000000000000000000000000000000"),
+                    WorkspaceModConflictCandidate(modFolderName: "trail-wheel-pack", originalName: "classes/wheels/offroad.xml", byteSize: 1_024, sha256: "cccccccccccc0000000000000000000000000000000000000000000000000000")
+                ],
+                selectedMod: "trail-wheel-pack"
             )
         ])
         
