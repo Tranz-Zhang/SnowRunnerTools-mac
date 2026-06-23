@@ -543,7 +543,7 @@ public enum PakWorkspaceManager {
         return WorkspaceModConflict(
             targetArchive: key.targetArchive,
             internalName: key.internalName,
-            targetPath: targetPathDisplay(for: key),
+            targetPath: key.internalName,
             candidates: sortedCandidates.map(\.candidate),
             selectedMod: selectedMod
         )
@@ -590,15 +590,6 @@ public enum PakWorkspaceManager {
         func hash(into hasher: inout Hasher) {
             hasher.combine(targetArchive.rawValue)
             hasher.combine(internalName)
-        }
-    }
-
-    private static func targetPathDisplay(for key: MappedTargetKey) -> String {
-        switch key.targetArchive {
-        case .initial:
-            return key.internalName
-        case .sharedTexturesBase, .sharedTextures:
-            return "\(key.targetArchive.rawValue):\(key.internalName)"
         }
     }
 

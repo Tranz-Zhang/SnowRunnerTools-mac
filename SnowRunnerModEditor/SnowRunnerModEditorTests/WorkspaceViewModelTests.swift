@@ -171,6 +171,39 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(service.quickVerifyCalls, 2)
     }
 
+    func testResolveConflictKeepsCurrentConflictDetailsVisibleWhileQuickVerifyRefreshes() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let unresolvedConflict = WorkspaceModConflict(
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            targetPath: "[media]\\classes\\trucks\\same.xml",
+            candidates: [
+                WorkspaceModConflictCandidate(modFolderName: "first", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "a"),
+                WorkspaceModConflictCandidate(modFolderName: "second", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "b")
+            ]
+        )
+        let originalResult = WorkspaceQuickVerifyResult(conflicts: [unresolvedConflict])
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = originalResult
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+        model.showConflictDetails()
+
+        service.quickVerifyDelayNanoseconds = 50_000_000
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        await model.resolveConflict(
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            selectedMod: "second"
+        )
+
+        XCTAssertEqual(model.screen, .conflictDetails)
+        XCTAssertEqual(model.busyState, .quickVerifying)
+        XCTAssertEqual(model.quickVerifyResult, originalResult)
+    }
+
     func testClearConflictResolutionCallsServiceRefreshesQuickVerifyAndStaysOnConflictDetails() async throws {
         let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
         let service = FakeWorkspaceService()

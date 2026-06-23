@@ -184,17 +184,19 @@ public final class WorkspaceViewModel {
             summary = try await operation()
             screen = .conflictDetails
             busyState = .idle
-            startQuickVerify()
+            startQuickVerify(preservingCurrentResult: true)
         } catch {
             errorMessage = String(describing: error)
             busyState = .idle
         }
     }
 
-    private func startQuickVerify() {
+    private func startQuickVerify(preservingCurrentResult: Bool = false) {
         cancelQuickVerify()
         guard let workspace = summary?.workspace else { return }
-        quickVerifyResult = nil
+        if !preservingCurrentResult {
+            quickVerifyResult = nil
+        }
         busyState = .quickVerifying
         quickVerifyTask = Task { [service] in
             do {

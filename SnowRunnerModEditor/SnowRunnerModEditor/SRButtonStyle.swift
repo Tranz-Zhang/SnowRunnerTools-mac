@@ -6,6 +6,7 @@ struct SRButtonStyle: ButtonStyle {
         case subtle
         case normal
         case destructive
+        case green
     }
 
     enum Size {
@@ -75,40 +76,46 @@ struct SRButtonStyle: ButtonStyle {
 
     private var foregroundStyle: Color {
         switch colorStyle {
-        case .main:
-            return .white
-        case .subtle:
-            return .accentColor
-        case .normal:
-            return Color(nsColor: .darkGray)
-        case .destructive:
-            return .red
+            case .main:
+                return .white
+            case .subtle:
+                return .accentColor
+            case .normal:
+                return Color(nsColor: .darkGray)
+            case .destructive:
+                return .red
+            case .green:
+                return .green
         }
     }
-
+    
     private var backgroundStyle: Color {
         switch colorStyle {
-        case .main:
-            return .accentColor
-        case .subtle:
-            return .accentColor.opacity(0.12)
-        case .normal:
-            return .white
-        case .destructive:
-            return .red.opacity(0.05)
+            case .main:
+                return .accentColor
+            case .subtle:
+                return .accentColor.opacity(0.12)
+            case .normal:
+                return .white
+            case .destructive:
+                return .red.opacity(0.05)
+            case .green:
+                return .green.opacity(0.05)
         }
     }
-
+    
     private var borderStyle: Color {
         switch colorStyle {
-        case .main:
-            return .clear
-        case .subtle:
-            return .accentColor.opacity(0.24)
-        case .normal:
-            return Color(nsColor: .lightGray).opacity(0.5)
-        case .destructive:
-            return .red
+            case .main:
+                return .clear
+            case .subtle:
+                return .accentColor.opacity(0.24)
+            case .normal:
+                return Color(nsColor: .lightGray).opacity(0.5)
+            case .destructive:
+                return .red
+            case .green:
+                return .green
         }
     }
 }

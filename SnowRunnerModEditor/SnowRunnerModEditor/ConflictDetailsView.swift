@@ -17,22 +17,33 @@ public struct ConflictDetailsView: View {
                 Text("No conflicts found.")
                     .foregroundStyle(.secondary)
             } else {
-                HSplitView {
+                HStack(alignment: .top, spacing: 12) {
                     List(conflicts, selection: $selectedConflictID) { conflict in
                         conflictRow(conflict)
                             .tag(conflict.id)
                     }
-                    .frame(minWidth: 260, idealWidth: 320)
+                    .frame(minWidth: 360, maxWidth: .infinity)
+                    .scrollContentBackground(.hidden)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(.separator)
+                    }
 
                     if let conflict = selectedConflict {
                         conflictDetail(conflict)
-                            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .frame(minWidth: 320, maxWidth: 420, maxHeight: .infinity, alignment: .topLeading)
                     } else {
                         Text("Select a conflict.")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .padding(20)
@@ -56,34 +67,55 @@ public struct ConflictDetailsView: View {
         conflicts.first { $0.id == selectedConflictID }
     }
 
+    private var unresolvedConflictCount: Int {
+        conflicts.filter { !$0.isResolved }.count
+    }
+
     private var header: some View {
         HStack {
-            Text("Conflict Details")
+            Text("Conflict Details: \(unresolvedConflictCount) left")
                 .font(.title3.weight(.semibold))
             Spacer()
             Button("Back to Workspace") {
                 viewModel.showWorkspace()
             }
+            .buttonStyle(SRButtonStyle(colorStyle: .normal, size: .small))
             .keyboardShortcut(.cancelAction)
         }
+        .padding(.leading, 5)
+        .padding(.trailing, 5)
+        
     }
 
     private func conflictRow(_ conflict: WorkspaceModConflict) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(conflict.isResolved ? "Resolved" : "Unresolved")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(conflict.isResolved ? .green : .red)
-                Spacer()
+            HStack(spacing: 4) {
+                if conflict.isResolved {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("Resolved")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                    
+                } else if (conflict.isByteIdentical) {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.yellow)
+                    Text("Unresolved [byte identical]")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.brown)
+                } else {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                    Text("Unresolved")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
             }
             Text(conflict.targetPath)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2)
                 .textSelection(.enabled)
-            Text(conflict.mods.joined(separator: ", "))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+//            Text(conflict.mods.joined(separator: ", "))
+//                .font(.caption)
+//                .foregroundStyle(.secondary)
+//                .lineLimit(1)
         }
         .padding(.vertical, 4)
     }
@@ -91,27 +123,15 @@ public struct ConflictDetailsView: View {
     private func conflictDetail(_ conflict: WorkspaceModConflict) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text(conflict.targetPath)
-                    .font(.headline)
-                    .textSelection(.enabled)
+//                Text(conflict.targetPath)
+//                    .font(.headline)
+//                    .textSelection(.enabled)
 
                 HStack {
                     Text(conflict.isResolved ? "Resolved by \(conflict.selectedMod ?? "")" : "Choose a version")
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(conflict.isResolved ? .green : .primary)
+                        .foregroundStyle(conflict.isResolved ? .green : .secondary)
                     Spacer()
-                    if conflict.isResolved {
-                        Button("Clear Resolution") {
-                            Task {
-                                await viewModel.clearConflictResolution(
-                                    targetArchive: conflict.targetArchive,
-                                    internalName: conflict.internalName
-                                )
-                            }
-                        }
-                        .buttonStyle(SRButtonStyle(colorStyle: .normal, size: .small))
-                        .disabled(viewModel.isBusy)
-                    }
                 }
 
                 VStack(spacing: 10) {
@@ -119,8 +139,20 @@ public struct ConflictDetailsView: View {
                         candidateRow(candidate, conflict: conflict)
                     }
                 }
+                if conflict.isResolved {
+                    Button("Revert") {
+                        Task {
+                            await viewModel.clearConflictResolution(
+                                targetArchive: conflict.targetArchive,
+                                internalName: conflict.internalName
+                            )
+                        }
+                    }
+                    .buttonStyle(SRButtonStyle(colorStyle: .normal, size: .small, minWidth: 120))
+                    .disabled(viewModel.isBusy)
+                }
             }
-            .padding(.leading, 16)
+            .padding(.leading, 12)
             .padding(.trailing, 4)
         }
     }
@@ -134,23 +166,24 @@ public struct ConflictDetailsView: View {
                 HStack {
                     Text(candidate.modFolderName)
                         .font(.callout.weight(.semibold))
-                    if conflict.selectedMod == candidate.modFolderName {
-                        Text("Selected")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
-                    }
+//                    if conflict.selectedMod == candidate.modFolderName {
+//                        Text("Selected")
+//                            .font(.caption.weight(.semibold))
+//                            .foregroundStyle(.green)
+//                    }
                 }
-                Text(candidate.originalName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+//                Text(candidate.originalName)
+//                    .font(.caption)
+//                    .foregroundStyle(.secondary)
+//                    .textSelection(.enabled)
                 Text("\(candidate.byteSize) bytes · \(candidate.sha256.prefix(12))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
             Spacer()
-            Button(conflict.isByteIdentical ? "Keep One Copy" : "Use This Version") {
+            let title = conflict.selectedMod == candidate.modFolderName ? "SELECTED" : (conflict.isByteIdentical ? "Keep One Copy" : "Use This Version")
+            Button(title) {
                 Task {
                     await viewModel.resolveConflict(
                         targetArchive: conflict.targetArchive,
@@ -159,7 +192,7 @@ public struct ConflictDetailsView: View {
                     )
                 }
             }
-            .buttonStyle(SRButtonStyle(colorStyle: .main, size: .small))
+            .buttonStyle(SRButtonStyle(colorStyle: conflict.selectedMod == candidate.modFolderName ? .green : .subtle, size: .small, minWidth: 100))
             .disabled(viewModel.isBusy || conflict.selectedMod == candidate.modFolderName)
         }
         .padding(12)

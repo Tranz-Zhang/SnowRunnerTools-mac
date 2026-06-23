@@ -845,7 +845,7 @@ final class PakWorkspaceTests: XCTestCase {
         let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
 
         let conflict = try XCTUnwrap(result.conflicts.first)
-        XCTAssertEqual(conflict.targetPath, "shared_textures_base.pak:[textures]\\foo.dds")
+        XCTAssertEqual(conflict.targetPath, "[textures]\\foo.dds")
         XCTAssertEqual(conflict.mods, ["first", "second"])
         XCTAssertTrue(conflict.isByteIdentical)
     }
