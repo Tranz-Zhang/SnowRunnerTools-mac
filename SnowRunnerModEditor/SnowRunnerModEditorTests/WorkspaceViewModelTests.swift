@@ -33,6 +33,83 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testOpenWorkspaceRecordsRecentWorkspaceAfterSuccessfulOpen() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let store = makeRecentWorkspaceStore()
+        let model = WorkspaceViewModel(service: service, recentWorkspaceStore: store)
+
+        await model.openWorkspace(workspace)
+
+        XCTAssertEqual(model.recentWorkspaces, [workspace])
+        XCTAssertEqual(store.load(), [workspace])
+    }
+
+    func testOpenWorkspaceUsesRecentWorkspaceStoreAccessWhileOpening() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let store = makeRecentWorkspaceStore()
+        service.onOpenWorkspace = { _ in
+            XCTAssertTrue(store.isAccessingWorkspace)
+        }
+        let model = WorkspaceViewModel(service: service, recentWorkspaceStore: store)
+
+        await model.openWorkspace(workspace)
+
+        XCTAssertEqual(store.accessedWorkspaces, [workspace])
+        XCTAssertTrue(store.isAccessingWorkspace)
+        model.closeWorkspace()
+        XCTAssertFalse(store.isAccessingWorkspace)
+    }
+
+    func testOpenInvalidWorkspaceDoesNotRecordRecentWorkspace() async {
+        let workspace = URL(fileURLWithPath: "/tmp/bad", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/.snowrunner-workspace.json")
+        let store = makeRecentWorkspaceStore()
+        let model = WorkspaceViewModel(service: service, recentWorkspaceStore: store)
+
+        await model.openWorkspace(workspace)
+
+        XCTAssertEqual(model.recentWorkspaces, [])
+        XCTAssertEqual(store.load(), [])
+    }
+
+    func testCreateWorkspaceRecordsRecentWorkspaceAfterSuccessfulCreate() async {
+        let workspace = URL(fileURLWithPath: "/tmp/created-workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let store = makeRecentWorkspaceStore()
+        let model = WorkspaceViewModel(service: service, recentWorkspaceStore: store)
+
+        await model.createWorkspace(
+            workspace: workspace,
+            initialPak: URL(fileURLWithPath: "/tmp/initial.pak")
+        )
+
+        XCTAssertEqual(model.recentWorkspaces, [workspace])
+        XCTAssertEqual(store.load(), [workspace])
+    }
+
+    func testRemoveRecentWorkspaceUpdatesModelAndStore() {
+        let first = URL(fileURLWithPath: "/tmp/first", isDirectory: true)
+        let second = URL(fileURLWithPath: "/tmp/second", isDirectory: true)
+        let store = makeRecentWorkspaceStore()
+        store.record(first)
+        store.record(second)
+        let model = WorkspaceViewModel(service: FakeWorkspaceService(), recentWorkspaceStore: store)
+
+        model.removeRecentWorkspace(second)
+
+        XCTAssertEqual(model.recentWorkspaces, [first])
+        XCTAssertEqual(store.load(), [first])
+    }
+
     func testConflictDetailsScreenRequiresConflictsAndCanReturnToWorkspace() async {
         let service = FakeWorkspaceService()
         let model = WorkspaceViewModel(service: service)
@@ -315,6 +392,10 @@ final class WorkspaceViewModelTests: XCTestCase {
         await Task.yield()
     }
 
+    private func makeRecentWorkspaceStore() -> FakeRecentWorkspaceStore {
+        FakeRecentWorkspaceStore()
+    }
+
     private func byteIdenticalConflict() -> WorkspaceModConflict {
         WorkspaceModConflict(
             targetArchive: .initial,
@@ -399,6 +480,7 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
     var quickVerifyDelayNanoseconds: UInt64 = 0
     var resolvedConflicts: [ResolvedConflict] = []
     var clearedConflicts: [ClearedConflict] = []
+    var onOpenWorkspace: ((URL) -> Void)?
 
     func createWorkspace(workspace: URL, initialPak: URL) async throws -> PakWorkspaceSummary {
         if let error { throw error }
@@ -408,6 +490,7 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
     func openWorkspace(_ workspace: URL) async throws -> PakWorkspaceSummary {
         if let openWorkspaceError { throw openWorkspaceError }
         if let error { throw error }
+        onOpenWorkspace?(workspace)
         return summary
     }
 
@@ -474,4 +557,30 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
 
 private enum FakeWorkspaceError: Error {
     case unimplementedBuild
+}
+
+private final class FakeRecentWorkspaceStore: RecentWorkspaceStoring {
+    private var workspaces: [URL] = []
+    var accessedWorkspaces: [URL] = []
+    var isAccessingWorkspace = false
+
+    func load() -> [URL] {
+        workspaces
+    }
+
+    func record(_ workspace: URL) {
+        workspaces = [workspace] + workspaces.filter { $0 != workspace }
+    }
+
+    func remove(_ workspace: URL) {
+        workspaces.removeAll { $0 == workspace }
+    }
+
+    func startAccessing(_ workspace: URL) -> RecentWorkspaceAccess {
+        accessedWorkspaces.append(workspace)
+        isAccessingWorkspace = true
+        return RecentWorkspaceAccess(url: workspace) {
+            self.isAccessingWorkspace = false
+        }
+    }
 }

@@ -24,6 +24,7 @@ public final class WorkspaceViewModel {
     @ObservationIgnored private let service: WorkspaceAppServicing
     @ObservationIgnored private let recentWorkspaceStore: RecentWorkspaceStoring
     @ObservationIgnored private var quickVerifyTask: Task<Void, Never>?
+    @ObservationIgnored private var workspaceAccess: RecentWorkspaceAccess?
 
     public var screen: Screen = .launch
     public var busyState: BusyState = .idle
@@ -47,25 +48,33 @@ public final class WorkspaceViewModel {
     }
 
     public func createWorkspace(workspace: URL, initialPak: URL) async {
-        await runWorkspaceMutation(.creatingWorkspace, recordsRecentWorkspace: true) {
-            try await service.createWorkspace(workspace: workspace, initialPak: initialPak)
+        let access = recentWorkspaceStore.startAccessing(workspace)
+        await runWorkspaceMutation(
+            .creatingWorkspace,
+            recordsRecentWorkspace: true,
+            newWorkspaceAccess: access
+        ) {
+            try await service.createWorkspace(workspace: access.url, initialPak: initialPak)
         }
     }
 
     public func openWorkspace(_ workspace: URL) async {
         cancelQuickVerify()
+        let access = recentWorkspaceStore.startAccessing(workspace)
         busyState = .openingWorkspace
         errorMessage = nil
         quickVerifyResult = nil
         buildResult = nil
         do {
-            let loaded = try await service.openWorkspace(workspace)
+            let loaded = try await service.openWorkspace(access.url)
             summary = loaded
+            replaceWorkspaceAccess(with: access)
             recordRecentWorkspace(loaded.workspace)
             screen = .workspace
             busyState = .idle
             startQuickVerify()
         } catch {
+            access.stop()
             summary = nil
             quickVerifyResult = nil
             buildResult = nil
@@ -82,6 +91,7 @@ public final class WorkspaceViewModel {
 
     public func closeWorkspace() {
         cancelQuickVerify()
+        releaseWorkspaceAccess()
         summary = nil
         quickVerifyResult = nil
         buildResult = nil
@@ -173,6 +183,7 @@ public final class WorkspaceViewModel {
     private func runWorkspaceMutation(
         _ state: BusyState,
         recordsRecentWorkspace: Bool = false,
+        newWorkspaceAccess: RecentWorkspaceAccess? = nil,
         operation: @MainActor () async throws -> PakWorkspaceSummary
     ) async {
         busyState = state
@@ -181,6 +192,9 @@ public final class WorkspaceViewModel {
         do {
             let loaded = try await operation()
             summary = loaded
+            if let newWorkspaceAccess {
+                replaceWorkspaceAccess(with: newWorkspaceAccess)
+            }
             if recordsRecentWorkspace {
                 recordRecentWorkspace(loaded.workspace)
             }
@@ -188,6 +202,7 @@ public final class WorkspaceViewModel {
             busyState = .idle
             startQuickVerify()
         } catch {
+            newWorkspaceAccess?.stop()
             errorMessage = String(describing: error)
             busyState = .idle
         }
@@ -238,6 +253,16 @@ public final class WorkspaceViewModel {
     private func cancelQuickVerify() {
         quickVerifyTask?.cancel()
         quickVerifyTask = nil
+    }
+
+    private func replaceWorkspaceAccess(with access: RecentWorkspaceAccess) {
+        workspaceAccess?.stop()
+        workspaceAccess = access
+    }
+
+    private func releaseWorkspaceAccess() {
+        workspaceAccess?.stop()
+        workspaceAccess = nil
     }
 
     private func recordRecentWorkspace(_ workspace: URL) {
