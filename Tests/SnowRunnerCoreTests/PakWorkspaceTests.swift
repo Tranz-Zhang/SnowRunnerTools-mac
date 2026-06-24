@@ -482,6 +482,21 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(summary.buildReport, PakWorkspacePaths.buildReport(root: workspace))
     }
 
+    func testWorkspaceSummaryReportsPublishedBuildOutputAfterBuild() throws {
+        let workspace = try temporaryDirectory(named: "workspace-summary-build-output")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+
+        let beforeBuild = try PakWorkspaceManager.summary(workspace: workspace)
+        XCTAssertNil(beforeBuild.buildOutput)
+
+        _ = try PakWorkspaceManager.build(workspace: workspace)
+        let afterBuild = try PakWorkspaceManager.summary(workspace: workspace)
+
+        XCTAssertEqual(afterBuild.buildOutput?.initialPak, PakWorkspacePaths.buildInitialPak(root: workspace))
+        XCTAssertEqual(afterBuild.buildOutput?.report, PakWorkspacePaths.buildReport(root: workspace))
+        XCTAssertNotNil(afterBuild.buildOutput?.modifiedAt)
+    }
+
     func testWorkspaceVerifyWritesNoBuildOutput() throws {
         let workspace = try temporaryDirectory(named: "workspace-verify")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
@@ -810,6 +825,27 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(conflict.targetPath, "[media]\\classes\\trucks\\same.xml")
         XCTAssertEqual(conflict.mods, ["first", "second"])
         XCTAssertFalse(conflict.isResolved)
+    }
+
+    func testWorkspaceQuickVerifyIgnoresMergeableCustomizationPresetDuplicates() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-customization-preset")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "first_truck", marker: "first")
+            ])
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "classes/customization_presets/customization_preset.xml": customizationPresetData([
+                truckXML(name: "second_truck", marker: "second")
+            ])
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [])
     }
 
     func testWorkspaceQuickVerifyFlagsDuplicateTargetsWithIdenticalBytes() throws {

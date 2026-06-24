@@ -47,6 +47,14 @@ public final class WorkspaceViewModel {
         busyState != .idle
     }
 
+    public var hasBuildOutput: Bool {
+        summary?.buildOutput != nil
+    }
+
+    public var lastBuildOutputDate: Date? {
+        summary?.buildOutput?.modifiedAt
+    }
+
     public func createWorkspace(workspace: URL, initialPak: URL) async {
         let access = recentWorkspaceStore.startAccessing(workspace)
         await runWorkspaceMutation(

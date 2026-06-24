@@ -34,7 +34,7 @@ public struct LaunchWorkspaceView: View {
                 }
                 .buttonStyle(SRButtonStyle(colorStyle: .normal, minWidth: 250))
                 .disabled(viewModel.isBusy)
-            }
+            }.padding(.bottom, 20)
 
             
 

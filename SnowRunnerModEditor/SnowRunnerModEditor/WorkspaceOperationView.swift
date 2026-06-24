@@ -88,12 +88,12 @@ public struct WorkspaceOperationView: View {
                 if let mods = viewModel.summary?.mods, !mods.isEmpty {
                     ScrollView(.vertical) {
                         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-                            GridRow {
-                                tableHeader("Enable")
-                                tableHeader("Name")
-                                Spacer()
-                                tableHeader("")
-                            }
+//                            GridRow {
+//                                tableHeader("Enable")
+//                                tableHeader("Name")
+//                                Spacer()
+//                                tableHeader("")
+//                            }
                             ForEach(mods) { mod in
                                 modRow(mod)
                             }
@@ -156,7 +156,7 @@ public struct WorkspaceOperationView: View {
                 .disabled(viewModel.isBusy)
                 .help("Remove")
                 .accessibilityLabel("Remove \(mod.folderName)")
-            }
+            }.padding(.trailing, 20)
         }.frame(height: 30)
     }
 
@@ -233,25 +233,31 @@ public struct WorkspaceOperationView: View {
                         .padding(.trailing, 5)
                         .padding(.leading, 2)
                 } else {
-                    Image(systemName: viewModel.buildResult == nil ? "archivebox" : "archivebox.fill")
-                        .foregroundStyle(viewModel.buildResult == nil ? .gray : .green)
+                    Image(systemName: viewModel.hasBuildOutput ? "archivebox.fill" : "archivebox")
+                        .foregroundStyle(viewModel.hasBuildOutput ? .green : .gray)
                         .font(.system(size: 20))
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Build Output")
+                    Text("Build initial.pak")
                         .font(.headline)
-                    Text("build/initial.pak")
-                        .font(.callout.weight(.semibold))
-                    Text("Full verification runs before publishing build/initial.pak and workspace-build-report.md.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+//                    Text("build/initial.pak")
+//                        .font(.callout.weight(.semibold))
+                    if let lastBuildOutputDate = viewModel.lastBuildOutputDate {
+                        Text("Last build: \(lastBuildOutputDate.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Found no build result")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 HStack(spacing: 10) {
-                    if (viewModel.summary != nil && viewModel.buildResult != nil) {
+                    if viewModel.hasBuildOutput {
                         Button {
-                            if let output = viewModel.summary?.buildInitialPak {
+                            if let output = viewModel.summary?.buildOutput?.initialPak {
                                 finder.reveal(output)
                             }
                         } label: {

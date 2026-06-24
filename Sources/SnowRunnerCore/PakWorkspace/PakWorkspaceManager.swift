@@ -8,25 +8,40 @@ public struct PakWorkspaceAddModsResult: Equatable {
     public let addedMods: [PakWorkspaceMod]
 }
 
+public struct PakWorkspaceBuildOutputSummary: Equatable {
+    public var initialPak: URL
+    public var report: URL
+    public var modifiedAt: Date?
+
+    public init(initialPak: URL, report: URL, modifiedAt: Date?) {
+        self.initialPak = initialPak
+        self.report = report
+        self.modifiedAt = modifiedAt
+    }
+}
+
 public struct PakWorkspaceSummary: Equatable {
     public var workspace: URL
     public var initialSourcePath: String
     public var mods: [PakWorkspaceModSummary]
     public var buildInitialPak: URL
     public var buildReport: URL
+    public var buildOutput: PakWorkspaceBuildOutputSummary?
 
     public init(
         workspace: URL,
         initialSourcePath: String,
         mods: [PakWorkspaceModSummary],
         buildInitialPak: URL,
-        buildReport: URL
+        buildReport: URL,
+        buildOutput: PakWorkspaceBuildOutputSummary? = nil
     ) {
         self.workspace = workspace
         self.initialSourcePath = initialSourcePath
         self.mods = mods
         self.buildInitialPak = buildInitialPak
         self.buildReport = buildReport
+        self.buildOutput = buildOutput
     }
 }
 
@@ -154,6 +169,8 @@ public enum PakWorkspaceManager {
 
     public static func summary(workspace: URL) throws -> PakWorkspaceSummary {
         let manifest = try loadManifest(workspace: workspace)
+        let buildInitialPak = PakWorkspacePaths.buildInitialPak(root: workspace)
+        let buildReport = PakWorkspacePaths.buildReport(root: workspace)
         return PakWorkspaceSummary(
             workspace: workspace,
             initialSourcePath: manifest.initialSourcePath,
@@ -167,8 +184,20 @@ public enum PakWorkspaceManager {
                     enabled: mod.enabled
                 )
             },
-            buildInitialPak: PakWorkspacePaths.buildInitialPak(root: workspace),
-            buildReport: PakWorkspacePaths.buildReport(root: workspace)
+            buildInitialPak: buildInitialPak,
+            buildReport: buildReport,
+            buildOutput: buildOutputSummary(initialPak: buildInitialPak, report: buildReport)
+        )
+    }
+
+    private static func buildOutputSummary(initialPak: URL, report: URL) -> PakWorkspaceBuildOutputSummary? {
+        guard FileManager.default.fileExists(atPath: initialPak.path) else { return nil }
+        let modifiedAt = try? FileManager.default
+            .attributesOfItem(atPath: initialPak.path)[.modificationDate] as? Date
+        return PakWorkspaceBuildOutputSummary(
+            initialPak: initialPak,
+            report: report,
+            modifiedAt: modifiedAt
         )
     }
 
@@ -378,6 +407,7 @@ public enum PakWorkspaceManager {
 
         let conflicts = grouped.values
             .filter { $0.count > 1 }
+            .filter { !isAutomaticallyMergedTarget($0[0].key) }
             .map { candidates in
                 makeWorkspaceConflict(
                     candidates: candidates,
@@ -549,6 +579,11 @@ public enum PakWorkspaceManager {
         )
     }
 
+    private static func isAutomaticallyMergedTarget(_ key: MappedTargetKey) -> Bool {
+        key.targetArchive == .initial
+            && key.internalName == ModCustomizationPreset.internalName
+    }
+
     private static func pruneConflictResolutionsIfNeeded(
         workspace: URL,
         manifest: inout PakWorkspaceManifest,
@@ -560,7 +595,8 @@ public enum PakWorkspaceManager {
 
         for resolution in manifest.conflictResolutions {
             let key = MappedTargetKey(targetArchive: resolution.targetArchive, internalName: resolution.internalName)
-            guard let candidates = grouped[key],
+            guard !isAutomaticallyMergedTarget(key),
+                  let candidates = grouped[key],
                   candidates.count > 1,
                   candidates.contains(where: { $0.mod.folderName == resolution.selectedMod })
             else {

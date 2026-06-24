@@ -332,6 +332,24 @@ path already exists in the base archive. They are still reported separately in
 CLI and Markdown merge reports, for example as `string table merges` and
 `customization preset merges`.
 
+Workspace conflict detection must use the same rule for
+`[media]\classes\customization_presets\customization_preset.xml`. Multiple
+enabled mods that map to this path are not a user-resolvable mod-to-mod
+conflict; they are automatic merge inputs. Quick verify therefore suppresses
+this target from the conflict list, and saved manual conflict resolutions for
+this target are stale and should be pruned rather than applied. Applying a
+manual winner would discard other mods' truck preset blocks and bypass the
+semantic merge.
+
+Some modded customization preset XML has duplicate `TintColor1`,
+`TintColor2`, or `TintColor3` attributes inside a single
+`<CustomizationPreset>` tag. XML parsers reject duplicate attribute names, but
+the observed intent is positional tint slots. Before parsing, the merge repair
+step promotes duplicate tint attributes to the first unused tint slot in
+`TintColor1`/`TintColor2`/`TintColor3` order while preserving the attribute
+values. This repair is limited to `<CustomizationPreset>` tags and only runs
+when the original XML parse fails.
+
 ## 4. `initial.cache_block`
 
 `initial.cache_block` is a secondary binary bundle stored as one ZIP entry

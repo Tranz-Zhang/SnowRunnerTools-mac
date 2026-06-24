@@ -21,6 +21,30 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(service.quickVerifyCalls, 1)
     }
 
+    func testOpenWorkspaceExposesPreviousBuildOutputWithoutBuildResult() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let modifiedAt = Date(timeIntervalSince1970: 1_803_897_600)
+        let service = FakeWorkspaceService()
+        service.summary = summary(
+            workspace: workspace,
+            mods: [],
+            buildOutput: PakWorkspaceBuildOutputSummary(
+                initialPak: workspace.appendingPathComponent("build/initial.pak"),
+                report: workspace.appendingPathComponent("build/workspace-build-report.md"),
+                modifiedAt: modifiedAt
+            )
+        )
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let model = WorkspaceViewModel(service: service)
+
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+
+        XCTAssertNil(model.buildResult)
+        XCTAssertTrue(model.hasBuildOutput)
+        XCTAssertEqual(model.lastBuildOutputDate, modifiedAt)
+    }
+
     func testOpenInvalidWorkspaceStaysOnLaunchScreen() async {
         let service = FakeWorkspaceService()
         service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/.snowrunner-workspace.json")
@@ -377,13 +401,18 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(service.quickVerifyCalls, 2)
     }
 
-    private func summary(workspace: URL, mods: [PakWorkspaceModSummary]) -> PakWorkspaceSummary {
+    private func summary(
+        workspace: URL,
+        mods: [PakWorkspaceModSummary],
+        buildOutput: PakWorkspaceBuildOutputSummary? = nil
+    ) -> PakWorkspaceSummary {
         PakWorkspaceSummary(
             workspace: workspace,
             initialSourcePath: "/game/initial.pak",
             mods: mods,
             buildInitialPak: workspace.appendingPathComponent("build/initial.pak"),
-            buildReport: workspace.appendingPathComponent("build/workspace-build-report.md")
+            buildReport: workspace.appendingPathComponent("build/workspace-build-report.md"),
+            buildOutput: buildOutput
         )
     }
 
