@@ -7,7 +7,6 @@ struct SRButtonStyle: ButtonStyle {
         case normal
         case destructive
         case green
-        case darkGray
     }
 
     enum Size {
@@ -87,15 +86,13 @@ struct SRButtonStyle: ButtonStyle {
                 return .red
             case .green:
                 return .green
-            case .darkGray:
-                return .white
         }
     }
     
     private var backgroundStyle: Color {
         switch colorStyle {
             case .main:
-                return .accentColor
+                return Color(white: 0.2)
             case .subtle:
                 return .accentColor.opacity(0.12)
             case .normal:
@@ -104,8 +101,6 @@ struct SRButtonStyle: ButtonStyle {
                 return .red.opacity(0.05)
             case .green:
                 return .green.opacity(0.05)
-            case .darkGray:
-                return Color(white: 0.2)
         }
     }
     
@@ -121,8 +116,6 @@ struct SRButtonStyle: ButtonStyle {
                 return .red
             case .green:
                 return .green
-            case .darkGray:
-                return .clear
         }
     }
 }

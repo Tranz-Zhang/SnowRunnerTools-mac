@@ -22,6 +22,7 @@ public final class WorkspaceViewModel {
     }
 
     @ObservationIgnored private let service: WorkspaceAppServicing
+    @ObservationIgnored private let recentWorkspaceStore: RecentWorkspaceStoring
     @ObservationIgnored private var quickVerifyTask: Task<Void, Never>?
 
     public var screen: Screen = .launch
@@ -30,9 +31,15 @@ public final class WorkspaceViewModel {
     public var quickVerifyResult: WorkspaceQuickVerifyResult?
     public var errorMessage: String?
     public var buildResult: ModMergeResult?
+    public var recentWorkspaces: [URL]
 
-    public init(service: WorkspaceAppServicing = WorkspaceAppService()) {
+    public init(
+        service: WorkspaceAppServicing = WorkspaceAppService(),
+        recentWorkspaceStore: RecentWorkspaceStoring = RecentWorkspaceStore()
+    ) {
         self.service = service
+        self.recentWorkspaceStore = recentWorkspaceStore
+        self.recentWorkspaces = recentWorkspaceStore.load()
     }
 
     public var isBusy: Bool {
@@ -40,7 +47,7 @@ public final class WorkspaceViewModel {
     }
 
     public func createWorkspace(workspace: URL, initialPak: URL) async {
-        await runWorkspaceMutation(.creatingWorkspace) {
+        await runWorkspaceMutation(.creatingWorkspace, recordsRecentWorkspace: true) {
             try await service.createWorkspace(workspace: workspace, initialPak: initialPak)
         }
     }
@@ -54,6 +61,7 @@ public final class WorkspaceViewModel {
         do {
             let loaded = try await service.openWorkspace(workspace)
             summary = loaded
+            recordRecentWorkspace(loaded.workspace)
             screen = .workspace
             busyState = .idle
             startQuickVerify()
@@ -65,6 +73,11 @@ public final class WorkspaceViewModel {
             busyState = .idle
             errorMessage = String(describing: error)
         }
+    }
+
+    public func removeRecentWorkspace(_ workspace: URL) {
+        recentWorkspaceStore.remove(workspace)
+        recentWorkspaces = recentWorkspaceStore.load()
     }
 
     public func closeWorkspace() {
@@ -159,13 +172,18 @@ public final class WorkspaceViewModel {
 
     private func runWorkspaceMutation(
         _ state: BusyState,
+        recordsRecentWorkspace: Bool = false,
         operation: @MainActor () async throws -> PakWorkspaceSummary
     ) async {
         busyState = state
         errorMessage = nil
         buildResult = nil
         do {
-            summary = try await operation()
+            let loaded = try await operation()
+            summary = loaded
+            if recordsRecentWorkspace {
+                recordRecentWorkspace(loaded.workspace)
+            }
             screen = .workspace
             busyState = .idle
             startQuickVerify()
@@ -220,6 +238,11 @@ public final class WorkspaceViewModel {
     private func cancelQuickVerify() {
         quickVerifyTask?.cancel()
         quickVerifyTask = nil
+    }
+
+    private func recordRecentWorkspace(_ workspace: URL) {
+        recentWorkspaceStore.record(workspace)
+        recentWorkspaces = recentWorkspaceStore.load()
     }
 
     private static func appVisibleQuickVerifyResult(from result: WorkspaceQuickVerifyResult) -> WorkspaceQuickVerifyResult {
