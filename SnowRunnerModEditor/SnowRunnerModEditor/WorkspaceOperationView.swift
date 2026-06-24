@@ -311,7 +311,7 @@ public struct WorkspaceOperationView: View {
 
 #Preview {
     WorkspaceOperationView(viewModel: WorkspaceOperationPreview.viewModel)
-        .frame(width: 900, height: 640)
+        .frame(width: 880, height: 560)
 }
 
 private enum WorkspaceOperationPreview {

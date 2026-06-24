@@ -11,32 +11,27 @@ public struct LaunchWorkspaceView: View {
     public var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            VStack(spacing: 8) {
-                Text("Choose a SnowRunner workspace")
-                    .font(.title2.weight(.semibold))
-                Text("Create one from initial.pak or open a folder containing .snowrunner-workspace.json.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            Image("snowrunner_title")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 420)
+                .accessibilityLabel("SnowRunner")
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             VStack(spacing: 10) {
                 Button("Create Workspace From initial.pak") {
                     createWorkspace()
                 }
-                .buttonStyle(SRButtonStyle(colorStyle: .main, minWidth: 250))
+                .buttonStyle(SRButtonStyle(colorStyle: .darkGray, minWidth: 250))
                 .disabled(viewModel.isBusy)
 
                 Button("Open Existing Workspace Folder") {
                     openWorkspace()
                 }
-                .buttonStyle(SRButtonStyle(minWidth: 250))
+                .buttonStyle(SRButtonStyle(colorStyle: .normal, minWidth: 250))
                 .disabled(viewModel.isBusy)
             }
-            Spacer()
-            if viewModel.isBusy {
-                ProgressView()
-            }
+            
 
             if let error = viewModel.errorMessage {
                 Text(error)
@@ -47,7 +42,13 @@ public struct LaunchWorkspaceView: View {
             }
         }
         .padding(32)
-        .frame(maxWidth: 560, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottomTrailing) {
+            if viewModel.isBusy {
+                ProgressView()
+                    .padding(15)
+            }
+        }
     }
 
     private func createWorkspace() {
@@ -69,4 +70,5 @@ public struct LaunchWorkspaceView: View {
 
 #Preview {
     LaunchWorkspaceView(viewModel: WorkspaceViewModel())
+        .frame(width: 880, height: 560)
 }

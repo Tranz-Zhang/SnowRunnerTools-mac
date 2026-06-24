@@ -203,7 +203,7 @@ public struct ConflictDetailsView: View {
 
 #Preview {
     ConflictDetailsView(viewModel: ConflictDetailsPreview.viewModel)
-        .frame(width: 720, height: 420)
+        .frame(width: 880, height: 560)
 }
 
 private enum ConflictDetailsPreview {
