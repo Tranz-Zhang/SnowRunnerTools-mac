@@ -56,6 +56,41 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .workspace)
     }
 
+    func testQuickVerifyFiltersByteIdenticalConflictsFromAppModel() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            byteIdenticalConflict()
+        ])
+        let model = WorkspaceViewModel(service: service)
+
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+
+        XCTAssertEqual(model.quickVerifyResult?.conflicts, [])
+        XCTAssertEqual(model.quickVerifyResult?.unresolvedConflictCount, 0)
+        model.showConflictDetails()
+        XCTAssertEqual(model.screen, .workspace)
+    }
+
+    func testQuickVerifyKeepsOnlyDifferentByteConflictsInAppModel() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
+            byteIdenticalConflict(),
+            differentByteConflict()
+        ])
+        let model = WorkspaceViewModel(service: service)
+
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+
+        XCTAssertEqual(model.quickVerifyResult?.conflicts, [differentByteConflict()])
+        XCTAssertEqual(model.quickVerifyResult?.unresolvedConflictCount, 1)
+    }
+
     func testOldQuickVerifyCannotUpdateStateAfterFailedOpen() async {
         let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
         let service = FakeWorkspaceService()
@@ -278,6 +313,30 @@ final class WorkspaceViewModelTests: XCTestCase {
     private func waitForQuickVerify() async {
         await Task.yield()
         await Task.yield()
+    }
+
+    private func byteIdenticalConflict() -> WorkspaceModConflict {
+        WorkspaceModConflict(
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\same.xml",
+            targetPath: "[media]\\classes\\trucks\\same.xml",
+            candidates: [
+                WorkspaceModConflictCandidate(modFolderName: "first", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "same"),
+                WorkspaceModConflictCandidate(modFolderName: "second", originalName: "classes/trucks/same.xml", byteSize: 1, sha256: "same")
+            ]
+        )
+    }
+
+    private func differentByteConflict() -> WorkspaceModConflict {
+        WorkspaceModConflict(
+            targetArchive: .initial,
+            internalName: "[media]\\classes\\trucks\\different.xml",
+            targetPath: "[media]\\classes\\trucks\\different.xml",
+            candidates: [
+                WorkspaceModConflictCandidate(modFolderName: "first", originalName: "classes/trucks/different.xml", byteSize: 1, sha256: "a"),
+                WorkspaceModConflictCandidate(modFolderName: "second", originalName: "classes/trucks/different.xml", byteSize: 1, sha256: "b")
+            ]
+        )
     }
 
     private func makeBuildResult() -> ModMergeResult {

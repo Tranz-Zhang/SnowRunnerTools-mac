@@ -180,6 +180,11 @@ Quick verify conflicts are not automatically blocking. Build remains available.
 If a conflict violates the full merge rules, the build path reports the
 blocking error.
 
+The core quick verify result may include byte-identical duplicates because the
+merge/report path can still record that overlap. The app model filters those
+duplicates out before updating UI state, because build dedupes identical bytes
+automatically and users do not need to resolve them.
+
 ### Build
 
 Build delegates to `PakWorkspaceManager.build`. The manager creates a temporary

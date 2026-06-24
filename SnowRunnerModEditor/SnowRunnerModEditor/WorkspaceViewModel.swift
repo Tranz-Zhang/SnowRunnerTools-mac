@@ -203,7 +203,7 @@ public final class WorkspaceViewModel {
             do {
                 let result = try await service.quickVerify(workspace: workspace)
                 guard !Task.isCancelled else { return }
-                quickVerifyResult = result
+                quickVerifyResult = Self.appVisibleQuickVerifyResult(from: result)
                 if busyState == .quickVerifying {
                     busyState = .idle
                 }
@@ -220,5 +220,9 @@ public final class WorkspaceViewModel {
     private func cancelQuickVerify() {
         quickVerifyTask?.cancel()
         quickVerifyTask = nil
+    }
+
+    private static func appVisibleQuickVerifyResult(from result: WorkspaceQuickVerifyResult) -> WorkspaceQuickVerifyResult {
+        WorkspaceQuickVerifyResult(conflicts: result.conflicts.filter { !$0.isByteIdentical })
     }
 }

@@ -347,7 +347,7 @@ private enum WorkspaceOperationPreview {
                 targetPath: "[media]\\classes\\wheels\\offroad.xml",
                 candidates: [
                     WorkspaceModConflictCandidate(modFolderName: "loadstar-rescue-kit", originalName: "classes/wheels/offroad.xml", byteSize: 1_024, sha256: "cccccccccccc0000000000000000000000000000000000000000000000000000"),
-                    WorkspaceModConflictCandidate(modFolderName: "trail-wheel-pack", originalName: "classes/wheels/offroad.xml", byteSize: 1_024, sha256: "cccccccccccc0000000000000000000000000000000000000000000000000000")
+                    WorkspaceModConflictCandidate(modFolderName: "trail-wheel-pack", originalName: "classes/wheels/offroad.xml", byteSize: 1_080, sha256: "dddddddddddd0000000000000000000000000000000000000000000000000000")
                 ],
                 selectedMod: "trail-wheel-pack"
             )

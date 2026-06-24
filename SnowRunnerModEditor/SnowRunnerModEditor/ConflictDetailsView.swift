@@ -95,12 +95,6 @@ public struct ConflictDetailsView: View {
                     Text("Resolved")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.green)
-                    
-                } else if (conflict.isByteIdentical) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.yellow)
-                    Text("Unresolved [byte identical]")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.brown)
                 } else {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
                     Text("Unresolved")
@@ -182,7 +176,7 @@ public struct ConflictDetailsView: View {
                     .textSelection(.enabled)
             }
             Spacer()
-            let title = conflict.selectedMod == candidate.modFolderName ? "SELECTED" : (conflict.isByteIdentical ? "Keep One Copy" : "Use This Version")
+            let title = conflict.selectedMod == candidate.modFolderName ? "SELECTED" : "Use This Version"
             Button(title) {
                 Task {
                     await viewModel.resolveConflict(
@@ -241,7 +235,7 @@ private enum ConflictDetailsPreview {
                 targetPath: "[media]\\classes\\wheels\\offroad.xml",
                 candidates: [
                     WorkspaceModConflictCandidate(modFolderName: "loadstar-rescue-kit", originalName: "classes/wheels/offroad.xml", byteSize: 1_024, sha256: "cccccccccccc0000000000000000000000000000000000000000000000000000"),
-                    WorkspaceModConflictCandidate(modFolderName: "trail-wheel-pack", originalName: "classes/wheels/offroad.xml", byteSize: 1_024, sha256: "cccccccccccc0000000000000000000000000000000000000000000000000000")
+                    WorkspaceModConflictCandidate(modFolderName: "trail-wheel-pack", originalName: "classes/wheels/offroad.xml", byteSize: 1_080, sha256: "dddddddddddd0000000000000000000000000000000000000000000000000000")
                 ],
                 selectedMod: "trail-wheel-pack"
             )
