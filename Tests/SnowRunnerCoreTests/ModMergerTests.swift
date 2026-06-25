@@ -435,6 +435,48 @@ final class ModMergerTests: XCTestCase {
         XCTAssertFalse(text.contains("Marker=\"old\""))
     }
 
+    func testMergerMergesWheelRegistryAndPreservesTruckDefaultTires() throws {
+        let wheelPath = "[media]\\classes\\wheels\\wheels_medium_double.xml"
+        let truckPath = "[media]\\classes\\trucks\\western_star_49x.xml"
+        let base = try makeSyntheticInitialPak(records: [
+            LoadListRecord(
+                manifestPath: "<media>\\classes\\wheels\\wheels_medium_double.xml",
+                loaderType: "cls_loader",
+                sourcePak: "initial.pak",
+                phase: "CLASSES load"
+            ),
+            LoadListRecord(
+                manifestPath: "<media>\\classes\\trucks\\western_star_49x.xml",
+                loaderType: "cls_loader",
+                sourcePak: "initial.pak",
+                phase: "CLASSES load"
+            )
+        ], extraInitialEntries: [
+            wheelPath: wheelsMediumDoubleBaseData(),
+            truckPath: westernStar49XWheelReferenceData()
+        ])
+        let mod = try makePak(named: "loadstar-wheels.pak", entries: [
+            "classes/wheels/wheels_medium_double.xml": wheelsMediumDoubleModData()
+        ])
+        let output = try temporaryDirectory(named: "merge-wheel-registry-output")
+            .appendingPathComponent("initial.merged.pak")
+
+        let result = try ModMerger.merge(
+            baseInitialPak: base,
+            outputInitialPak: output,
+            modPaks: [mod],
+            options: ModMergeOptions(allowOverwrite: false)
+        )
+
+        XCTAssertEqual(result.plan.collisions, [])
+        let archive = try PakReader.readArchive(at: output)
+        let wheelEntry = try XCTUnwrap(archive.entries.first { $0.name == wheelPath })
+        let text = decodedUTF8(try PakReader.readUncompressedPayload(entry: wheelEntry, in: archive))
+        XCTAssertTrue(text.contains("Name=\"highway_1\""))
+        XCTAssertTrue(text.contains("Name=\"highway_2\""))
+        XCTAssertTrue(text.contains("Name=\"offroad_1\""))
+    }
+
     func testMergerPreservesBaseKeysWhenMergingTextFixture() throws {
         guard FileManager.default.fileExists(atPath: TestFixtures.initialPak.path),
               let textPak = TestFixtures.optionalTextPak() else {

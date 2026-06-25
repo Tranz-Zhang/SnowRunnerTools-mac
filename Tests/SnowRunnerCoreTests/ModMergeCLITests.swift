@@ -277,7 +277,8 @@ func makeSyntheticInitialPak() throws -> URL {
 
 func makeSyntheticInitialPak(
     records extraRecords: [LoadListRecord],
-    customizationPresetData: Data? = nil
+    customizationPresetData: Data? = nil,
+    extraInitialEntries: [String: Data] = [:]
 ) throws -> URL {
     let customizationRecord = customizationPresetData == nil ? [] : [
         LoadListRecord(
@@ -314,9 +315,50 @@ func makeSyntheticInitialPak(
             data: customizationPresetData
         ))
     }
+    for key in extraInitialEntries.keys.sorted() {
+        sources.append(PakFileSource(internalName: key, data: extraInitialEntries[key]!))
+    }
     sources = try PakDirectoryScanner.sortedPackSources(sources)
     try PakWriter.writeArchive(fileSources: sources, to: output)
     return output
+}
+
+func wheelsMediumDoubleBaseData() -> Data {
+    Data("""
+    <TruckWheels>
+        <TruckTires>
+            <TruckTire Name="highway_1" Mesh="base_highway_1" />
+            <TruckTire Name="highway_2" Mesh="base_highway_2" />
+        </TruckTires>
+        <TruckRims>
+            <TruckRim Name="rim_2" Mesh="base_rim_2" />
+        </TruckRims>
+    </TruckWheels>
+    """.utf8)
+}
+
+func wheelsMediumDoubleModData() -> Data {
+    Data("""
+    <TruckWheels>
+        <TruckTires>
+            <TruckTire Name="offroad_1" Mesh="mod_offroad_1" />
+        </TruckTires>
+        <TruckRims>
+            <TruckRim Name="rim_9" Mesh="mod_rim_9" />
+        </TruckRims>
+    </TruckWheels>
+    """.utf8)
+}
+
+func westernStar49XWheelReferenceData() -> Data {
+    Data("""
+    <Truck>
+        <TruckData>
+            <Wheels DefaultWheelType="wheels_medium_double" DefaultTire="highway_1" DefaultRim="rim_2" />
+            <ExtraWheels WheelType="wheels_medium_double" Tire="highway_2" Rim="rim_2" />
+        </TruckData>
+    </Truck>
+    """.utf8)
 }
 
 func makePak(named name: String, entries: [String: Data]) throws -> URL {

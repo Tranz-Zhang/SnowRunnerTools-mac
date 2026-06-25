@@ -314,18 +314,38 @@ runtime path as a base entry, `pak merge-mod` rejects it unless
 `--allow-overwrite` is supplied. With overwrite allowed, the mod payload
 replaces the base payload at that runtime path.
 
-Two file families have semantic merge rules because a file-level replacement
+Some file families have semantic merge rules because a file-level replacement
 would delete unrelated base-game data:
 
 | Runtime path | Merge key | Rule | Load-list effect |
 | --- | --- | --- | --- |
 | `[strings]\*.str` | string key before the first tab | Remove all base rows whose key appears in the mod table, then append mod rows. | None; loose strings are not load-listed. |
 | `[media]\classes\customization_presets\customization_preset.xml` | direct `<Truck Name="...">` child of root `<TruckSet>` | Preserve base truck order, replace matching truck blocks, append new mod truck blocks in mod order. If multiple mods define the same truck, later mod order wins. | Path remains one `cls_loader` class entry; existing path edits do not add a new load-list record. |
+| `[media]\...\classes\wheels\*.xml` | `<TruckTire Name="...">` under `<TruckTires>` and `<TruckRim Name="...">` under `<TruckRims>` | Preserve base tire/rim entries, replace entries with the same schema-specific key, append new mod entries. | Path remains one `cls_loader` class entry. |
+| `[media]\...\classes\engines\*.xml` | `<Engine Name="...">` under `<EngineVariants>` | Preserve base engine variants, replace matching names, append new variants. | Path remains one `cls_loader` class entry. |
+| `[media]\...\classes\gearboxes\*.xml` | `<Gearbox Name="...">` under `<GearboxVariants>` | Preserve base gearbox variants, replace matching names, append new variants. | Path remains one `cls_loader` class entry. |
+| `[media]\...\classes\suspensions\*.xml` | `<SuspensionSet Name="...">` under `<SuspensionSetVariants>` | Preserve base suspension variants, replace matching names, append new variants. | Path remains one `cls_loader` class entry. |
+| `[media]\...\classes\winches\winches_*.xml` | `<Winch Name="...">` under `<WinchVariants>` | Preserve base winch variants, replace matching names, append new variants. `winch_ui_draw.xml` is not a variant registry. | Path remains one `cls_loader` class entry. |
 
 The customization preset merge validates that the XML root is `<TruckSet>` and
 that every direct `<Truck>` child has a non-empty `Name` attribute. It treats
 the whole `<Truck>` block as the merge unit; it does not merge individual
 `<CustomizationPreset Id="...">` children.
+
+Registry XML merge keys are schema-specific. The merger does not treat every
+XML element with a `Name` attribute as a mergeable identity. This is deliberate:
+truck, addon, trailer, model, weather, daytime, and other class XML files can
+use `Name` for local data where a generic name-key merge would corrupt the
+document. Non-registry class XML overwrites remain legal because many mods
+intentionally replace truck or addon definitions.
+
+Registry files may be SnowRunner XML fragments rather than strict single-root
+XML documents, for example a leading `<_templates>` element followed by
+`<EngineVariants>`. The merge parser wraps such fragments for parsing and
+emits the original top-level shape. Registry inheritance through
+`<_parent File="...">` is significant for validation: a child registry can
+define only the delta over its parent, and references resolve against the
+effective parent-plus-child registry.
 
 These semantic merges do not require `--allow-overwrite` when the semantic file
 path already exists in the base archive. They are still reported separately in
@@ -349,6 +369,59 @@ step promotes duplicate tint attributes to the first unused tint slot in
 `TintColor1`/`TintColor2`/`TintColor3` order while preserving the attribute
 values. This repair is limited to `<CustomizationPreset>` tags and only runs
 when the original XML parse fails.
+
+### Reference-Safe Merge Validation
+
+After building the merged `initial.pak` sources, the merge pipeline validates
+reference-affecting class XML before writing output. This catches the failure
+mode where a mod overwrites a shared registry and silently removes names still
+referenced by unrelated trucks. For example, if a mod replaces
+`[media]\classes\wheels\wheels_medium_double.xml` and omits `highway_1`, the
+validator reports the truck path, the wheel registry, and the missing tire name
+instead of producing an archive where Western Star 49X disappears in game.
+
+The validator builds indexes from the assembled sources:
+
+- wheel registry basenames to effective tire and rim name sets
+- engine, gearbox, suspension, and winch registry basenames to effective
+  variant name sets
+- truck/addon class basenames for optional class-local checks
+- parsed truck/addon XML documents whose references need checking
+
+Validated truck/addon references include:
+
+| Source XML attribute | Target index |
+| --- | --- |
+| `Wheels@DefaultWheelType` | wheel registry basename |
+| `Wheels@DefaultTire` | tire name in the effective wheel registry |
+| `Wheels@DefaultRim` | rim name in the effective wheel registry |
+| `ExtraWheels@WheelType` | wheel registry basename |
+| `ExtraWheels@Tire` | tire name in the effective wheel registry |
+| `ExtraWheels@Rim` | rim name in the effective wheel registry |
+| `EngineSocket@Type` / `@Default` | engine registry basename list and engine name |
+| `GearboxSocket@Type` / `@Default` | gearbox registry basename list and gearbox name |
+| `SuspensionSocket@Type` / `@Default` | suspension registry basename list and suspension name |
+| `WinchUpgradeSocket@Type` / `@Default` | winch registry basename list and winch name |
+
+The public validator can also report unresolved `_parent File` and
+`AddonSockets@DefaultAddon` class references. The merge/build path currently
+keeps those class-local checks disabled by default because the current base
+fixture/workspace contains pre-existing class-local references that do not
+resolve by simple basename lookup, while the registry/socket checks are the
+critical guard against shared registry overwrites.
+
+Validation is single-pass and in-memory per build. Each relevant XML source is
+read and parsed at most once, indexes are populated once, and references are
+checked with dictionary/set lookups. The expected complexity is
+`O(number of relevant XML files + number of references)`. There is no
+persistent cache; invalidation risk is higher than the expected benefit because
+the merge already reads and writes the PAK contents.
+
+The validator uses XML parsing for structure. It does not rely on production
+regex searches over XML bodies except for path classification and limited
+parser recovery for SnowRunner XML quirks such as fragments, namespace-like
+element names without namespace declarations, duplicate non-reference
+attributes, and bare ampersands in text.
 
 ## 4. `initial.cache_block`
 
