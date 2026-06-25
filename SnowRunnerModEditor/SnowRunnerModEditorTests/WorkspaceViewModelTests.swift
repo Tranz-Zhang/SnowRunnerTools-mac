@@ -238,6 +238,7 @@ final class WorkspaceViewModelTests: XCTestCase {
         await waitForQuickVerify()
 
         XCTAssertEqual(model.summary?.mods.map(\.folderName), ["demo"])
+        XCTAssertEqual(service.addedPackages, [URL(fileURLWithPath: "/mods/demo.pak")])
         XCTAssertEqual(service.quickVerifyCalls, 2)
     }
 
@@ -509,6 +510,7 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
     var quickVerifyDelayNanoseconds: UInt64 = 0
     var resolvedConflicts: [ResolvedConflict] = []
     var clearedConflicts: [ClearedConflict] = []
+    var addedPackages: [URL] = []
     var onOpenWorkspace: ((URL) -> Void)?
 
     func createWorkspace(workspace: URL, initialPak: URL) async throws -> PakWorkspaceSummary {
@@ -523,8 +525,9 @@ private final class FakeWorkspaceService: WorkspaceAppServicing {
         return summary
     }
 
-    func addMods(workspace: URL, modPaks: [URL]) async throws -> PakWorkspaceSummary {
+    func addModPackages(workspace: URL, packages: [URL]) async throws -> PakWorkspaceSummary {
         if let error { throw error }
+        addedPackages = packages
         return summary
     }
 

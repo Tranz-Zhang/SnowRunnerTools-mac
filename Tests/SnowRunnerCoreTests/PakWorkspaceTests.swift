@@ -368,6 +368,151 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(manifest.mods[0].entries.count, 1)
     }
 
+    func testWorkspaceAddModPackagesImportsZipAsSingleCombinedMod() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-zip-package")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let main = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+        let texture = try makePak(named: "pc.pak", entries: [
+            "prebuild/textures/pct/demo.pct": makeSyntheticPCT(tableCount: 2)
+        ])
+        let package = try makePak(named: "demo_download.zip", entries: [
+            "demo.pak": Data(contentsOf: main),
+            "pc.pak": Data(contentsOf: texture)
+        ])
+
+        let result = try PakWorkspaceManager.addModPackages(workspace: workspace, packages: [package])
+
+        XCTAssertEqual(result.addedMods.map(\.folderName), ["demo"])
+        let modRoot = PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: modRoot.appendingPathComponent("classes/trucks/demo.xml").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: modRoot.appendingPathComponent("prebuild/textures/pct/demo.pct").path))
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.mods.count, 1)
+        XCTAssertEqual(manifest.mods[0].sourcePath, package.path)
+        XCTAssertEqual(manifest.mods[0].archiveName, "demo.pak")
+        XCTAssertEqual(manifest.mods[0].sourceCachePath, ".snowrunner/sources/demo.pak")
+        XCTAssertEqual(Set(manifest.mods[0].entries.map(\.sourceEntryName)), [
+            "classes/trucks/demo.xml",
+            "prebuild/textures/pct/demo.pct"
+        ])
+        let cache = try PakReader.readArchive(at: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo"))
+        XCTAssertEqual(Set(cache.entries.map(\.name)), [
+            "classes/trucks/demo.xml",
+            "prebuild/textures/pct/demo.pct"
+        ])
+    }
+
+    func testWorkspaceAddModPackagesIgnoresZeroBytePlatformPaks() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-zero-byte-platform-paks")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let main = try makePak(named: "TiresCargo.pak", entries: [
+            "texts/strings_english.str": Data("KEY\t\t\"Value\"".utf8)
+        ])
+        let package = try makePak(named: "tc.zip", entries: [
+            "TiresCargo.pak": Data(contentsOf: main),
+            "pc.pak": Data(),
+            "playstation_4.pak": Data(),
+            "playstation_5.pak": Data()
+        ])
+
+        let result = try PakWorkspaceManager.addModPackages(workspace: workspace, packages: [package])
+
+        XCTAssertEqual(result.addedMods.map(\.folderName), ["TiresCargo"])
+        let modRoot = PakWorkspacePaths.modDirectory(root: workspace, folderName: "TiresCargo")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: modRoot.appendingPathComponent("texts/strings_english.str").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: modRoot.appendingPathComponent("pc.pak").path))
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.mods[0].archiveName, "TiresCargo.pak")
+        XCTAssertEqual(manifest.mods[0].entries.map(\.sourceEntryName), ["texts/strings_english.str"])
+    }
+
+    func testWorkspaceAddModPackagesAllowsByteIdenticalDuplicateSourcePaths() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-identical-duplicate-package-path")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let main = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+        let pct = makeSyntheticPCT(tableCount: 2)
+        let firstTexture = try makePak(named: "pc.pak", entries: [
+            "prebuild/textures/pct/demo.pct": pct
+        ])
+        let secondTexture = try makePak(named: "playstation_4.pak", entries: [
+            "prebuild/textures/pct/demo.pct": pct
+        ])
+        let package = try makePak(named: "demo_multi_platform.zip", entries: [
+            "demo.pak": Data(contentsOf: main),
+            "pc.pak": Data(contentsOf: firstTexture),
+            "playstation_4.pak": Data(contentsOf: secondTexture)
+        ])
+
+        _ = try PakWorkspaceManager.addModPackages(workspace: workspace, packages: [package])
+
+        let manifest = try PakWorkspaceManager.loadManifest(workspace: workspace)
+        XCTAssertEqual(manifest.mods.count, 1)
+        XCTAssertEqual(manifest.mods[0].entries.filter { $0.sourceEntryName == "prebuild/textures/pct/demo.pct" }.count, 1)
+    }
+
+    func testWorkspaceAddModPackagesRejectsDifferingDuplicateSourcePathsAtomically() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-differing-duplicate-package-path")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let main = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+        let firstTexture = try makePak(named: "pc.pak", entries: [
+            "prebuild/textures/pct/demo.pct": makeSyntheticPCT(tableCount: 2)
+        ])
+        let secondTexture = try makePak(named: "playstation_4.pak", entries: [
+            "prebuild/textures/pct/demo.pct": makeSyntheticPCT(tableCount: 3)
+        ])
+        let package = try makePak(named: "demo_multi_platform.zip", entries: [
+            "demo.pak": Data(contentsOf: main),
+            "pc.pak": Data(contentsOf: firstTexture),
+            "playstation_4.pak": Data(contentsOf: secondTexture)
+        ])
+
+        XCTAssertThrowsError(try PakWorkspaceManager.addModPackages(workspace: workspace, packages: [package]))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.modDirectory(root: workspace, folderName: "demo").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PakWorkspacePaths.sourceCache(root: workspace, folderName: "demo").path))
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
+    }
+
+    func testWorkspaceAddModPackagesRejectsInvalidPackageShapesAtomically() throws {
+        let workspace = try temporaryDirectory(named: "workspace-add-invalid-package-shapes")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)
+        let main = try makePak(named: "demo.pak", entries: [
+            "classes/trucks/demo.xml": Data("<Truck/>".utf8)
+        ])
+        let secondMain = try makePak(named: "other.pak", entries: [
+            "texts/strings_english.str": Data("KEY\t\t\"Value\"".utf8)
+        ])
+        let multipleMainPackage = try makePak(named: "multiple_main.zip", entries: [
+            "demo.pak": Data(contentsOf: main),
+            "other.pak": Data(contentsOf: secondMain)
+        ])
+        let unparseablePakPackage = try makePak(named: "invalid_pak.zip", entries: [
+            "demo.pak": Data(contentsOf: main),
+            "pc.pak": Data("not a pak".utf8)
+        ])
+        let unsupportedPak = try makePak(named: "unsupported.pak", entries: [
+            "unknown/path.bin": Data([1, 2, 3])
+        ])
+        let unsupportedPackage = try makePak(named: "unsupported.zip", entries: [
+            "unsupported.pak": Data(contentsOf: unsupportedPak)
+        ])
+        let looseFilePackage = try makePak(named: "loose.zip", entries: [
+            "demo.pak": Data(contentsOf: main),
+            "readme.txt": Data("not supported".utf8)
+        ])
+
+        for package in [multipleMainPackage, unparseablePakPackage, unsupportedPackage, looseFilePackage] {
+            XCTAssertThrowsError(try PakWorkspaceManager.addModPackages(workspace: workspace, packages: [package]))
+        }
+        XCTAssertEqual(try PakWorkspaceManager.loadManifest(workspace: workspace).mods, [])
+    }
+
     func testWorkspaceAddModsRejectsDuplicateFolderName() throws {
         let workspace = try temporaryDirectory(named: "workspace-add-duplicate")
         _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: TestFixtures.initialPak)

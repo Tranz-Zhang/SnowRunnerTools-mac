@@ -126,7 +126,7 @@ public final class WorkspaceViewModel {
     public func addMods(_ modPaks: [URL]) async {
         guard let workspace = summary?.workspace, !modPaks.isEmpty else { return }
         await runWorkspaceMutation(.addingMods) {
-            try await service.addMods(workspace: workspace, modPaks: modPaks)
+            try await service.addModPackages(workspace: workspace, packages: modPaks)
         }
     }
 

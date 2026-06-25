@@ -389,6 +389,61 @@ public enum PakWorkspaceManager {
         return PakWorkspaceAddModsResult(addedMods: staged.map(\.mod))
     }
 
+    public static func addModPackages(workspace: URL, packages: [URL]) throws -> PakWorkspaceAddModsResult {
+        if packages.allSatisfy({ $0.pathExtension.lowercased() == "pak" }) {
+            return try addMods(workspace: workspace, modPaks: packages)
+        }
+
+        var manifest = try loadManifest(workspace: workspace)
+        var staged: [StagedModPackage] = []
+        defer {
+            for item in staged {
+                try? FileManager.default.removeItem(at: item.tempMod)
+                try? FileManager.default.removeItem(at: item.tempCache)
+                for temporaryDirectory in item.temporaryDirectories {
+                    try? FileManager.default.removeItem(at: temporaryDirectory)
+                }
+            }
+        }
+
+        for package in packages {
+            switch package.pathExtension.lowercased() {
+            case "pak":
+                staged.append(try stagePakModPackage(workspace: workspace, pak: package))
+            case "zip":
+                staged.append(try stageZipModPackage(workspace: workspace, package: package))
+            default:
+                throw PakWorkspaceError.invalidCommand("Unsupported mod package extension: \(package.lastPathComponent)")
+            }
+        }
+
+        let existingNames = Set(manifest.mods.map(\.folderName))
+        let newNames = staged.map { $0.mod.folderName }
+        for name in newNames {
+            if existingNames.contains(name) || newNames.filter({ $0 == name }).count > 1 {
+                throw PakWorkspaceError.duplicateModFolderName(name)
+            }
+        }
+
+        manifest.mods.append(contentsOf: staged.map(\.mod))
+        try commitManifestLast(workspace: workspace, manifest: manifest) {
+            try FileManager.default.createDirectory(at: PakWorkspacePaths.modsDirectory(root: workspace), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: PakWorkspacePaths.sourcesDirectory(root: workspace), withIntermediateDirectories: true)
+            for item in staged {
+                try? FileManager.default.removeItem(at: item.finalMod)
+                try? FileManager.default.removeItem(at: item.finalCache)
+                try FileManager.default.moveItem(at: item.tempMod, to: item.finalMod)
+                try FileManager.default.moveItem(at: item.tempCache, to: item.finalCache)
+            }
+        } rollback: {
+            for item in staged {
+                try? FileManager.default.removeItem(at: item.finalMod)
+                try? FileManager.default.removeItem(at: item.finalCache)
+            }
+        }
+        return PakWorkspaceAddModsResult(addedMods: staged.map(\.mod))
+    }
+
     public static func verify(workspace: URL) throws -> ModMergeResult {
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent("SnowRunnerWorkspaceVerify-\(UUID().uuidString).pak")
         defer { try? FileManager.default.removeItem(at: temp) }
@@ -444,6 +499,285 @@ public enum PakWorkspaceManager {
             writtenTextureEntryCount: nil,
             writtenSharedTextureEntryCount: nil
         )
+    }
+
+    private struct StagedModPackage {
+        var mod: PakWorkspaceMod
+        var tempMod: URL
+        var finalMod: URL
+        var tempCache: URL
+        var finalCache: URL
+        var temporaryDirectories: [URL]
+    }
+
+    private struct InnerPakMember {
+        enum Role {
+            case main
+            case textureCompanion
+        }
+
+        var archiveName: String
+        var archive: PakArchive
+        var role: Role
+    }
+
+    private struct CombinedSourceEntry {
+        var sourceEntry: PakWorkspaceSourceEntry
+        var cacheSource: PakFileSource
+        var sha256: String
+    }
+
+    private static func stagePakModPackage(workspace: URL, pak: URL) throws -> StagedModPackage {
+        _ = try ModArchiveMapper.mapArchive(at: pak)
+        let folderName = folderName(forPak: pak)
+        let finalMod = PakWorkspacePaths.modDirectory(root: workspace, folderName: folderName)
+        let tempMod = workspace.appendingPathComponent(".mod-\(folderName)-\(UUID().uuidString)", isDirectory: true)
+        let tempCache = workspace.appendingPathComponent(".source-\(folderName)-\(UUID().uuidString).pak")
+        let finalCache = PakWorkspacePaths.sourceCache(root: workspace, folderName: folderName)
+        try PakModUnpacker.unpack(archiveURL: pak, toDirectory: tempMod)
+        try FileManager.default.createDirectory(at: tempCache.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: pak, to: tempCache)
+        let entries = try sourceEntries(for: pak, folderName: folderName)
+        let mod = PakWorkspaceMod(
+            sourcePath: pak.path,
+            folderName: folderName,
+            archiveName: pak.lastPathComponent,
+            sourceCachePath: ".snowrunner/sources/\(folderName).pak",
+            entries: entries
+        )
+        return StagedModPackage(
+            mod: mod,
+            tempMod: tempMod,
+            finalMod: finalMod,
+            tempCache: tempCache,
+            finalCache: finalCache,
+            temporaryDirectories: []
+        )
+    }
+
+    private static func stageZipModPackage(workspace: URL, package: URL) throws -> StagedModPackage {
+        let packageTemp = workspace.appendingPathComponent(".package-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: packageTemp, withIntermediateDirectories: true)
+        do {
+            let members = try discoverInnerPakMembers(package: package, temporaryDirectory: packageTemp)
+            let mainMembers = members.filter { $0.role == .main }
+            guard mainMembers.count == 1, let main = mainMembers.first else {
+                throw PakWorkspaceError.invalidCommand(
+                    "Expected exactly one main PAK in \(package.lastPathComponent); found \(mainMembers.count)"
+                )
+            }
+
+            let folderName = folderName(forPak: URL(fileURLWithPath: main.archiveName))
+            let finalMod = PakWorkspacePaths.modDirectory(root: workspace, folderName: folderName)
+            let tempMod = workspace.appendingPathComponent(".mod-\(folderName)-\(UUID().uuidString)", isDirectory: true)
+            let tempCache = workspace.appendingPathComponent(".source-\(folderName)-\(UUID().uuidString).pak")
+            let finalCache = PakWorkspacePaths.sourceCache(root: workspace, folderName: folderName)
+            let combined = try combineInnerPakMembers(
+                members,
+                folderName: folderName,
+                outputDirectory: tempMod
+            )
+            let cacheSources = combined
+                .map(\.cacheSource)
+                .sorted { $0.internalName < $1.internalName }
+            try PakWriter.writeArchive(fileSources: cacheSources, to: tempCache)
+            let sourceEntries = combined
+                .map(\.sourceEntry)
+                .sorted { $0.sourceEntryName < $1.sourceEntryName }
+            let mod = PakWorkspaceMod(
+                sourcePath: package.path,
+                folderName: folderName,
+                archiveName: main.archiveName,
+                sourceCachePath: ".snowrunner/sources/\(folderName).pak",
+                entries: sourceEntries
+            )
+            return StagedModPackage(
+                mod: mod,
+                tempMod: tempMod,
+                finalMod: finalMod,
+                tempCache: tempCache,
+                finalCache: finalCache,
+                temporaryDirectories: [packageTemp]
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: packageTemp)
+            throw error
+        }
+    }
+
+    private static func discoverInnerPakMembers(package: URL, temporaryDirectory: URL) throws -> [InnerPakMember] {
+        let outer = try PakReader.readArchive(at: package)
+        var members: [InnerPakMember] = []
+        for (index, entry) in outer.entries.enumerated() {
+            if PakModPath.isDirectoryEntry(entry.name) || isIgnoredPackageMetadata(entry.name) {
+                continue
+            }
+
+            let normalizedName = entry.name.replacingOccurrences(of: "\\", with: "/")
+            guard normalizedName.lowercased().hasSuffix(".pak") else {
+                throw PakWorkspaceError.invalidCommand(
+                    "Unsupported loose file in \(package.lastPathComponent): \(entry.name)"
+                )
+            }
+            if entry.uncompressedSize == 0 {
+                continue
+            }
+
+            let archiveName = URL(fileURLWithPath: normalizedName).lastPathComponent
+            let payload = try PakReader.readUncompressedPayload(entry: entry, in: outer)
+            let innerURL = temporaryDirectory.appendingPathComponent("\(index)-\(archiveName)")
+            try payload.write(to: innerURL, options: .atomic)
+            let archive: PakArchive
+            do {
+                archive = try PakReader.readArchive(at: innerURL)
+            } catch {
+                throw PakWorkspaceError.invalidCommand(
+                    "Invalid inner PAK in \(package.lastPathComponent): \(entry.name)"
+                )
+            }
+            let role = try classifyInnerPak(archive, archiveName: archiveName)
+            members.append(InnerPakMember(
+                archiveName: archiveName,
+                archive: archive,
+                role: role
+            ))
+        }
+
+        guard !members.isEmpty else {
+            throw PakWorkspaceError.invalidCommand("No supported inner PAKs found in \(package.lastPathComponent)")
+        }
+        return members
+    }
+
+    private static func classifyInnerPak(_ archive: PakArchive, archiveName: String) throws -> InnerPakMember.Role {
+        let fileNames = archive.entries
+            .map(\.name)
+            .filter { !PakModPath.isDirectoryEntry($0) }
+            .map { $0.replacingOccurrences(of: "\\", with: "/") }
+
+        guard !fileNames.isEmpty else {
+            throw PakWorkspaceError.invalidCommand("Unsupported empty PAK in mod package: \(archiveName)")
+        }
+
+        var hasMainSource = false
+        var hasTextureSource = false
+        for name in fileNames {
+            if isSupportedMainSourcePath(name) {
+                hasMainSource = true
+            } else if isSupportedTextureCompanionPath(name) {
+                hasTextureSource = true
+            } else {
+                throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
+            }
+        }
+
+        if hasMainSource {
+            return .main
+        }
+        if hasTextureSource {
+            return .textureCompanion
+        }
+        throw PakWorkspaceError.invalidCommand("Unsupported empty PAK in mod package: \(archiveName)")
+    }
+
+    private static func combineInnerPakMembers(
+        _ members: [InnerPakMember],
+        folderName: String,
+        outputDirectory: URL
+    ) throws -> [CombinedSourceEntry] {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        var combinedByName: [String: CombinedSourceEntry] = [:]
+
+        for member in members {
+            for entry in member.archive.entries {
+                if PakModPath.isDirectoryEntry(entry.name) {
+                    continue
+                }
+                let sourceEntryName = try PakModPath.fileSystemRelativePath(forArchiveName: entry.name)
+                let payload = try PakReader.readUncompressedPayload(entry: entry, in: member.archive)
+                let sha = ModArchiveMapper.sha256Hex(uncompressedPayload: payload)
+                if let existing = combinedByName[sourceEntryName] {
+                    guard existing.sha256 == sha else {
+                        throw PakWorkspaceError.invalidCommand(
+                            "Duplicate mod package path has different contents: \(sourceEntryName)"
+                        )
+                    }
+                    continue
+                }
+
+                let outputURL = outputDirectory.appendingPathComponent(sourceEntryName).standardizedFileURL
+                guard outputURL.path.hasPrefix(outputDirectory.standardizedFileURL.path + "/") else {
+                    throw PakModPathError.absolutePath(outputURL)
+                }
+                try FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try payload.write(to: outputURL, options: .atomic)
+
+                let compressedPayload = PakCompressedPayload(
+                    compressionMethod: entry.compressionMethod,
+                    data: try PakReader.readCompressedPayload(entry: entry, in: member.archive),
+                    crc32: entry.crc32,
+                    uncompressedSize: entry.uncompressedSize
+                )
+                let sourceEntry = PakWorkspaceSourceEntry(
+                    sourceEntryName: sourceEntryName,
+                    workspacePath: "mods/\(folderName)/\(sourceEntryName)",
+                    sha256: sha
+                )
+                combinedByName[sourceEntryName] = CombinedSourceEntry(
+                    sourceEntry: sourceEntry,
+                    cacheSource: PakFileSource(
+                        internalName: sourceEntryName,
+                        compressedPayload: compressedPayload,
+                        localExtraField: entry.localExtraField,
+                        centralExtraField: entry.centralExtraField
+                    ),
+                    sha256: sha
+                )
+            }
+        }
+
+        return combinedByName.values.sorted { $0.sourceEntry.sourceEntryName < $1.sourceEntry.sourceEntryName }
+    }
+
+    private static func isIgnoredPackageMetadata(_ name: String) -> Bool {
+        let normalized = name.replacingOccurrences(of: "\\", with: "/")
+        let last = URL(fileURLWithPath: normalized).lastPathComponent
+        return normalized.hasPrefix("__MACOSX/") || last == ".DS_Store"
+    }
+
+    private static func isSupportedMainSourcePath(_ name: String) -> Bool {
+        if let rest = consumePrefix("classes/", from: name), !rest.isEmpty {
+            return true
+        }
+        if let rest = consumePrefix("prebuild/meshes/", from: name), !rest.isEmpty {
+            return true
+        }
+        if let rest = consumePrefix("ui/textures/", from: name), !rest.isEmpty {
+            return true
+        }
+        if let rest = consumePrefix("texts/", from: name),
+           !rest.isEmpty,
+           !rest.contains("/"),
+           rest.hasSuffix(".str")
+        {
+            return true
+        }
+        return false
+    }
+
+    private static func isSupportedTextureCompanionPath(_ name: String) -> Bool {
+        guard let rest = consumePrefix("prebuild/textures/", from: name), !rest.isEmpty else {
+            return false
+        }
+        return rest.hasSuffix(".pct")
+    }
+
+    private static func consumePrefix(_ prefix: String, from path: String) -> String? {
+        guard path.hasPrefix(prefix) else { return nil }
+        return String(path.dropFirst(prefix.count))
     }
 
     private static func folderName(forPak url: URL) -> String {

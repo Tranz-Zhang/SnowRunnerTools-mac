@@ -8,7 +8,7 @@ editor. Its job is to make the existing workspace workflow visible and safer:
 
 - create a workspace from `initial.pak`,
 - open an existing workspace,
-- add mod PAKs,
+- add mod packages,
 - enable, disable, and remove mods,
 - show quick mod-to-mod target conflicts,
 - build the verified output PAK and report.
@@ -124,10 +124,47 @@ blocking errors.
 
 ### Add Mods
 
-`WorkspaceOperationView` lets the user select one or more mod PAK files.
-`PakWorkspaceManager.addMods` validates them, unpacks editable mod directories,
-caches the original source PAKs under `.snowrunner/sources/`, and updates the
-manifest.
+`WorkspaceOperationView` lets the user select one or more mod packages. The
+macOS editor accepts direct `.pak` files and downloaded SnowRunner `.zip`
+packages. The view model still exposes this as `addMods` because the user task
+is adding mods, but the app service calls
+`PakWorkspaceManager.addModPackages`.
+
+Package import is intentionally app-facing. Direct `.pak` inputs delegate to
+the existing `PakWorkspaceManager.addMods` path, and the CLI continues to use
+`addMods` so command-line behavior remains `.pak`-only.
+
+Downloaded `.zip` packages import as one workspace mod. The package importer
+opens the outer zip, ignores directory entries, macOS metadata, and zero-byte
+inner `.pak` platform placeholders, then materializes each non-empty inner
+`.pak` once into temporary files. Non-empty inner `.pak` files must be parseable
+SnowRunner zip archives. Loose non-pak files are rejected for now.
+
+Inner pak classification is content-based, not filename-based. This matters
+because companion paks can be named `pc.pak`, `nx64.pak`,
+`playstation_4.pak`, `playstation_5.pak`, `xbox_series.pak`, or other platform
+names. Supported main-source paths are:
+
+- `classes/**`
+- `prebuild/meshes/**`
+- `ui/textures/**`
+- `texts/*.str`
+
+Supported texture-companion paths are:
+
+- `prebuild/textures/**/*.pct`
+
+A package must contain exactly one main candidate. Any number of texture
+companions are allowed. Unsupported non-directory entries, multiple main
+candidates, unparseable non-zero inner paks, or differing duplicate source
+paths reject the whole import before manifest commit. Byte-identical duplicate
+source paths are allowed.
+
+The importer extracts all supported entries into one editable
+`mods/<mainPakStem>/` directory and writes one synthetic source cache at
+`.snowrunner/sources/<mainPakStem>.pak`. The manifest records the original zip
+as `sourcePath`, the visible mod/archive name comes from the main inner pak
+stem, and build still emits everything into `build/initial.pak`.
 
 After adding mods, the app reloads summary and quick verify runs against the new
 enabled mod set.
@@ -237,9 +274,18 @@ These rules are more important than the current UI shape:
 - Missing `enabled` means enabled for backward compatibility.
 - Disabled mods remain in their existing folders and caches.
 - Enabled mods must have both an editable mod directory and cached source PAK.
+- A downloaded mod zip is represented as one manifest mod, not as separate
+  platform paks.
+- ZIP package import is editor-only; CLI add-mod semantics remain direct
+  `.pak` semantics.
 - Quick verify and build include only enabled mods.
+- Directory-backed mod mapping is per file path so a combined workspace mod can
+  contain both main content and texture companion content. Direct `.pak` archive
+  mapping still validates the archive as one role.
 - Build output is fixed to `build/initial.pak` and
   `build/workspace-build-report.md`.
+- Texture load-list sources are redirected into the generated `initial.pak`
+  during build; the workspace does not publish a separate mod texture pak.
 - The original source `initial.pak` is read-only from the app's perspective.
 - `workspace --verify` does not publish build output.
 - `workspace --build` publishes output only after verification succeeds.
@@ -261,6 +307,10 @@ Examples:
 - selected `initial.pak` fails validation,
 - destination workspace has incompatible existing contents,
 - selected mod PAK is unsupported,
+- selected mod ZIP has loose non-pak files,
+- selected mod ZIP has no main inner pak or multiple main inner paks,
+- selected mod ZIP has unsupported inner-pak paths,
+- selected mod ZIP has differing duplicate source paths across inner paks,
 - duplicate mod folder name,
 - enabling or building with a missing mod directory,
 - enabling or building with a missing cached source PAK,
@@ -282,6 +332,10 @@ Library tests in `SnowRunnerToolTests` cover workspace semantics:
 
 - manifest compatibility and `enabled` encoding,
 - add, enable, disable, and remove behavior,
+- editor package import for downloaded zip mods,
+- package classification, zero-byte platform placeholder handling, duplicate
+  source handling, and atomic rejection,
+- mixed directory mapping for combined main and texture companion sources,
 - quick verify conflict detection,
 - disabled-mod filtering,
 - build output publishing,
@@ -294,7 +348,7 @@ fake `WorkspaceAppServicing`:
 - valid open enters the workspace screen,
 - invalid open stays on the launch screen,
 - stale quick verify cannot update state after a failed open,
-- adding mods refreshes summary and runs quick verify,
+- adding mod packages refreshes summary and runs quick verify,
 - mutations clear previous build results.
 
 The SwiftUI views currently rely on compiler coverage and manual smoke testing.
@@ -322,10 +376,14 @@ build.
   - Workspace manifest, paths, JSON encoder/decoder policy.
 - `Sources/SnowRunnerCore/PakWorkspace/PakWorkspaceManager.swift`
   - Headless workspace use cases and transaction-sensitive mutations.
+- `Sources/SnowRunnerCore/ModMerge/ModArchiveMapper.swift`
+  - Mapping from workspace mod sources to target SnowRunner archive paths.
 - `Tests/SnowRunnerModEditorTests/WorkspaceViewModelTests.swift`
   - View-model unit tests with a fake service.
 - `Tests/SnowRunnerCoreTests/PakWorkspaceTests.swift`
   - Library-level workspace behavior tests.
+- `Tests/SnowRunnerCoreTests/ModArchiveMapperTests.swift`
+  - Archive and directory mapping behavior tests.
 
 ## Extension Guidelines
 

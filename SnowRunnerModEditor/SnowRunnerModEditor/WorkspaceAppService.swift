@@ -5,7 +5,7 @@ import Foundation
 public protocol WorkspaceAppServicing {
     func createWorkspace(workspace: URL, initialPak: URL) async throws -> PakWorkspaceSummary
     func openWorkspace(_ workspace: URL) async throws -> PakWorkspaceSummary
-    func addMods(workspace: URL, modPaks: [URL]) async throws -> PakWorkspaceSummary
+    func addModPackages(workspace: URL, packages: [URL]) async throws -> PakWorkspaceSummary
     func setModEnabled(workspace: URL, folderName: String, enabled: Bool) async throws -> PakWorkspaceSummary
     func removeMod(workspace: URL, folderName: String) async throws -> PakWorkspaceSummary
     func resolveConflict(
@@ -39,9 +39,9 @@ public struct WorkspaceAppService: WorkspaceAppServicing {
         }
     }
 
-    public func addMods(workspace: URL, modPaks: [URL]) async throws -> PakWorkspaceSummary {
+    public func addModPackages(workspace: URL, packages: [URL]) async throws -> PakWorkspaceSummary {
         try await detachedValue(priority: .userInitiated) {
-            _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: modPaks)
+            _ = try PakWorkspaceManager.addModPackages(workspace: workspace, packages: packages)
             return try PakWorkspaceManager.summary(workspace: workspace)
         }
     }

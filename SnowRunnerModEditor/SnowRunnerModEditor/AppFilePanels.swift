@@ -18,11 +18,11 @@ struct AppFilePanels {
 
     func chooseModPaks() -> [URL] {
         let panel = NSOpenPanel()
-        panel.title = "Choose Mod PAKs"
+        panel.title = "Choose Mod Packages"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [UTType(filenameExtension: "pak")].compactMap { $0 }
+        panel.allowedContentTypes = ["pak", "zip"].compactMap { UTType(filenameExtension: $0) }
         return panel.runModal() == .OK ? panel.urls : []
     }
 

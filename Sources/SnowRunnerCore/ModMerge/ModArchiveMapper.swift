@@ -103,20 +103,6 @@ public enum ModArchiveMapper {
         workspaceRoot: URL
     ) throws -> [ModMappedEntry] {
         let sources = try PakModDirectoryScanner.scan(rootDirectory: directory)
-        do {
-            try validateMergeCompatiblePackagePaths(sources.map(\.internalName), archiveName: archiveName)
-        } catch ModMergeError.unsupportedModPath(let archive, let path) {
-            let workspacePath = sources
-                .first { $0.internalName == path }?
-                .fileURL
-                .map { workspaceRelativePath(for: $0, workspaceRoot: workspaceRoot) } ?? path
-            throw ModMergeError.unsupportedModPath(archive: archive, path: workspacePath)
-        }
-
-        let role = try role(
-            forPackagePaths: sources.map(\.internalName).map(normalizedPackagePath),
-            archiveName: archiveName
-        )
         let cacheArchive = try sourceCache.map { try PakReader.readArchive(at: $0) }
         let cacheByName = Dictionary(uniqueKeysWithValues: (cacheArchive?.entries ?? []).map { ($0.name, $0) })
         let sourceHashByName = Dictionary(uniqueKeysWithValues: sourceEntries.map { ($0.sourceEntryName, $0.sha256) })
@@ -132,9 +118,8 @@ public enum ModArchiveMapper {
                 preserveCompressedPayload: Bool
             )]
             do {
-                destinations = try map(
+                destinations = try mapWorkspaceSource(
                     source.internalName,
-                    role: role,
                     archiveURL: URL(fileURLWithPath: archiveName),
                     payload: payload
                 )
@@ -180,6 +165,52 @@ public enum ModArchiveMapper {
             }
         }
         return mapped
+    }
+
+    private static func mapWorkspaceSource(
+        _ name: String,
+        archiveURL: URL,
+        payload: Data
+    ) throws -> [(
+        internalName: String,
+        targetArchive: ModMergeTargetArchive,
+        data: Data,
+        preserveZipExtraFields: Bool,
+        preserveCompressedPayload: Bool
+    )] {
+        let path = normalizedPackagePath(name)
+        let archiveName = archiveURL.lastPathComponent
+
+        if let rest = consumePrefix("classes/", from: path), !rest.isEmpty {
+            return [("[media]\\classes\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
+        }
+        if let rest = consumePrefix("prebuild/meshes/", from: path), !rest.isEmpty {
+            return [("[meshes]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
+        }
+        if let rest = consumePrefix("ui/textures/", from: path), !rest.isEmpty {
+            return [("[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .sharedTexturesBase, payload, false, false)]
+        }
+        if let rest = consumePrefix("texts/", from: path), !rest.isEmpty, !rest.contains("/"), rest.hasSuffix(".str") {
+            return [("[strings]\\" + rest.replacingOccurrences(of: "/", with: "\\"), .initial, payload, false, false)]
+        }
+        if let rest = consumePrefix("prebuild/textures/", from: path), !rest.isEmpty, rest.hasSuffix(".pct") {
+            let pctName = "[textures]\\" + rest.replacingOccurrences(of: "/", with: "\\")
+            let headerData: Data
+            do {
+                headerData = try PCTHeaderGenerator.headerData(for: payload)
+            } catch {
+                throw ModMergeError.invalidModArchive(
+                    archive: archiveName,
+                    reason: "\(name) invalid PCT texture: \(error)"
+                )
+            }
+            return [
+                (pctName, .sharedTextures, payload, true, true),
+                (pctName + "_header", .sharedTextures, headerData, false, false)
+            ]
+        }
+
+        throw ModMergeError.unsupportedModPath(archive: archiveName, path: name)
     }
 
     private enum Role {
