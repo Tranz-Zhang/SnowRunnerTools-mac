@@ -12,3 +12,4 @@ workspace_v2
 .superpowers
 .worktrees/
 **/xcuserdata/
+dist/
