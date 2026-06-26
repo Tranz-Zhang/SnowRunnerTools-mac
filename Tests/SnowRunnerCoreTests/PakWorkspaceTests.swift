@@ -993,6 +993,27 @@ final class PakWorkspaceTests: XCTestCase {
         XCTAssertEqual(result.conflicts, [])
     }
 
+    func testWorkspaceQuickVerifyIgnoresMergeableStringTableDuplicates() throws {
+        let base = try makeSyntheticInitialPak()
+        let workspace = try temporaryDirectory(named: "workspace-quick-string-table")
+        _ = try PakWorkspaceManager.initialize(workspace: workspace, initialPak: base)
+        let first = try makePak(named: "first.pak", entries: [
+            "texts/strings_english.str": stringTableData("""
+            FIRST_KEY\t\t"First"
+            """)
+        ])
+        let second = try makePak(named: "second.pak", entries: [
+            "texts/strings_english.str": stringTableData("""
+            SECOND_KEY\t\t"Second"
+            """)
+        ])
+        _ = try PakWorkspaceManager.addMods(workspace: workspace, modPaks: [first, second])
+
+        let result = try PakWorkspaceManager.quickVerify(workspace: workspace)
+
+        XCTAssertEqual(result.conflicts, [])
+    }
+
     func testWorkspaceQuickVerifyFlagsDuplicateTargetsWithIdenticalBytes() throws {
         let base = try makeSyntheticInitialPak()
         let workspace = try temporaryDirectory(named: "workspace-quick-conflict-identical")

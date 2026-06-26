@@ -19,7 +19,7 @@ final class LoadListInspectorTests: XCTestCase {
 
     func testCompactReportMatchesSnowPakToolReferenceReportWhenAvailable() throws {
         guard let oracleURL = TestFixtures.optionalCompactReferenceReport() else {
-            throw XCTSkip("fixtures/reports/load-list-compact.txt is not present (Windows-only oracle).")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/reports/load-list-compact.txt is not present (Windows-only oracle).")
         }
         let url = try TestFixtures.extractPakLoadList(from: TestFixtures.initialPak)
         let manifest = try LoadListReader.readManifest(from: url)

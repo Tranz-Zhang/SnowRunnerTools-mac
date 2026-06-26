@@ -137,7 +137,7 @@ final class CLITests: XCTestCase {
     func testCLILoadListCreateInitialWritesParseableManifest() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak(),
               let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared.pak and fixtures/shared_sound.pak required for create-initial test")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak and shared_sound.pak required for create-initial test")
         }
         let target = try temporaryDirectory(named: "cli-load-list")
             .appendingPathComponent("pak.load_list")
@@ -166,10 +166,10 @@ final class CLITests: XCTestCase {
 
     func testCLIPakPackRebuildLoadListProducesVerifiableArchive() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak() else {
-            throw XCTSkip("fixtures/shared.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak not present")
         }
         guard let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared_sound.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared_sound.pak not present")
         }
 
         let mixedRoot = try temporaryDirectory(named: "cli-rebuild-root")
@@ -198,10 +198,10 @@ final class CLITests: XCTestCase {
 
     func testCLIPakPackRebuildLoadListAcceptsFlagsInEitherOrder() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak() else {
-            throw XCTSkip("fixtures/shared.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak not present")
         }
         guard let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared_sound.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared_sound.pak not present")
         }
 
         let mixedRoot = try temporaryDirectory(named: "cli-rebuild-flag-order")

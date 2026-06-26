@@ -23,7 +23,8 @@ let package = Package(
         ),
         .testTarget(
             name: "SnowRunnerCoreTests",
-            dependencies: ["SnowRunnerCore"]
+            dependencies: ["SnowRunnerCore"],
+            exclude: ["Fixtures"]
         )
     ]
 )

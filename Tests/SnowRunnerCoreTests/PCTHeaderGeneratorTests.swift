@@ -18,9 +18,9 @@ final class PCTHeaderGeneratorTests: XCTestCase {
     }
 
     func testHeaderRuleMatchesLevelPakFixtureWhenAvailable() throws {
-        let levelPak = TestFixtures.root.appendingPathComponent("fixtures/level_ru_02_03.pak")
+        let levelPak = TestFixtures.fixturesRoot.appendingPathComponent("level_ru_02_03.pak")
         guard FileManager.default.fileExists(atPath: levelPak.path) else {
-            throw XCTSkip("fixtures/level_ru_02_03.pak is not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/level_ru_02_03.pak is not present")
         }
 
         let archive = try PakReader.readArchive(at: levelPak)

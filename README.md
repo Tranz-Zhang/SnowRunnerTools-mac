@@ -37,22 +37,25 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snow
 Inspect and verify a PAK:
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak inspect fixtures/initial.pak
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-basic fixtures/initial.pak
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-snowpak-layout fixtures/initial.repacked.pak
+TEST_FIXTURES=Tests/SnowRunnerCoreTests/Fixtures
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak inspect "$TEST_FIXTURES/initial.pak"
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-basic "$TEST_FIXTURES/initial.pak"
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak verify-snowpak-layout "$TEST_FIXTURES/initial.repacked.pak"
 ```
 
 Unpack and repack `initial.pak`:
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack fixtures/initial.pak /tmp/snowrunner-initial
+TEST_FIXTURES=Tests/SnowRunnerCoreTests/Fixtures
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack "$TEST_FIXTURES/initial.pak" /tmp/snowrunner-initial
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak pack /tmp/snowrunner-initial /tmp/initial.repacked.pak
 ```
 
 Unpack and repack a supported PC mod PAK:
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack-mod fixtures/loadstar_1700_jbe.pak /tmp/loadstar-mod
+TEST_FIXTURES=Tests/SnowRunnerCoreTests/Fixtures
+env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak unpack-mod "$TEST_FIXTURES/loadstar_1700_jbe.pak" /tmp/loadstar-mod
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snowrunner-tool pak pack-mod /tmp/loadstar-mod /tmp/loadstar_1700_jbe.repacked.pak
 ```
 
@@ -77,6 +80,7 @@ env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache swift run snow
 Merge a supported PC mod package into an `initial.pak` candidate:
 
 ```bash
+TEST_FIXTURES=Tests/SnowRunnerCoreTests/Fixtures
 env CLANG_MODULE_CACHE_PATH=/private/tmp/codex-swift-module-cache \
 swift run snowrunner-tool pak merge-mod \
   --allow-overwrite \
@@ -84,7 +88,7 @@ swift run snowrunner-tool pak merge-mod \
   --input-initial /path/to/initial.pak \
   --output-initial /tmp/initial.loadstar-jbe.pak \
   --experimental-inline-textures \
-  --mods fixtures/loadstar_1700_jbe.pak fixtures/loadstar_1700_jbe_pc.pak
+  --mods "$TEST_FIXTURES/loadstar_1700_jbe.pak" "$TEST_FIXTURES/loadstar_1700_jbe_pc.pak"
 ```
 
 Use `--dry-run` first to print the mapping, collision, and load-list summary
@@ -170,9 +174,11 @@ PCT texture entries are indexed in `pak.load_list` as
 
 ## Fixtures
 
-`fixtures/` is for automated-test fixtures that belong in the repository.
+`Tests/SnowRunnerCoreTests/Fixtures/` is for automated-test fixtures that
+belong in the repository.
 
 Large runtime PAKs such as `shared.pak` and `shared_sound.pak` should not be
 committed. Current runtime versions may be supersets of the historical PAKs that
-created `fixtures/initial.pak`'s embedded `pak.load_list`; tests therefore use
-containment checks instead of exact record-count parity for those inputs.
+created the test `initial.pak` fixture's embedded `pak.load_list`; tests
+therefore use containment checks instead of exact record-count parity for those
+inputs.

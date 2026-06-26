@@ -191,7 +191,7 @@ final class LoadListBuilderTests: XCTestCase {
     func testBuilderRuntimePaksContainReferenceManifestRecordsTheyCanSupply() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak(),
               let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared.pak and fixtures/shared_sound.pak required for runtime-superset test")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak and shared_sound.pak required for runtime-superset test")
         }
 
         let referenceURL = try TestFixtures.extractPakLoadList(from: TestFixtures.initialPak)

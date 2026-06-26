@@ -7,14 +7,17 @@ enum TestFixtures {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
+    static let fixturesRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .appendingPathComponent("Fixtures", isDirectory: true)
 
-    static let initialPak = root.appendingPathComponent("fixtures/initial.pak")
-    static let initialRepackedPak = root.appendingPathComponent("fixtures/initial.repacked.pak")
-    static let loadstarJbeModPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.1/loadstar_1700_jbe.pak")
-    static let loadstarJbePcPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.1/pc.pak")
-    static let rootLoadstarJbeModPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe.pak")
-    static let rootLoadstarJbePcPak = root.appendingPathComponent("fixtures/loadstar_1700_jbe_pc.pak")
-    static let textPak = root.appendingPathComponent("fixtures/text.pak")
+    static let initialPak = fixturesRoot.appendingPathComponent("initial.pak")
+    static let initialRepackedPak = fixturesRoot.appendingPathComponent("initial.repacked.pak")
+    static let loadstarJbeModPak = fixturesRoot.appendingPathComponent("loadstar_1700_jbe_pc.1/loadstar_1700_jbe.pak")
+    static let loadstarJbePcPak = fixturesRoot.appendingPathComponent("loadstar_1700_jbe_pc.1/pc.pak")
+    static let rootLoadstarJbeModPak = fixturesRoot.appendingPathComponent("loadstar_1700_jbe.pak")
+    static let rootLoadstarJbePcPak = fixturesRoot.appendingPathComponent("loadstar_1700_jbe_pc.pak")
+    static let textPak = fixturesRoot.appendingPathComponent("text.pak")
 
     static func extractInitialCacheBlock(from pakURL: URL) throws -> URL {
         let archive = try PakReader.readArchive(at: pakURL)
@@ -40,17 +43,17 @@ enum TestFixtures {
     }
 
     static func optionalCompactReferenceReport() -> URL? {
-        let url = root.appendingPathComponent("fixtures/reports/load-list-compact.txt")
+        let url = fixturesRoot.appendingPathComponent("reports/load-list-compact.txt")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     static func optionalSharedPak() -> URL? {
-        let url = root.appendingPathComponent("fixtures/shared.pak")
+        let url = fixturesRoot.appendingPathComponent("shared.pak")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     static func optionalSharedSoundPak() -> URL? {
-        let url = root.appendingPathComponent("fixtures/shared_sound.pak")
+        let url = fixturesRoot.appendingPathComponent("shared_sound.pak")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 

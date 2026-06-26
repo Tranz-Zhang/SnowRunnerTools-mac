@@ -12,7 +12,7 @@ public struct LoadListClassificationInput: Equatable {
 
 /// Classifies a single PAK entry into the `LoadListRecord` shape used by the
 /// reference manifest. Rules are derived from the parsed reference manifest
-/// extracted from `fixtures/initial.pak`'s `pak.load_list` (17,902 records,
+/// extracted from the test `initial.pak` fixture's `pak.load_list` (17,902 records,
 /// six unique `(loader, source-pak)` tuples). Entries that intentionally do
 /// not appear in the manifest (the manifest itself, the cache-block, loose
 /// `[strings]`, the `[ssl_cache]\initial_pak` marker) classify to `nil`.

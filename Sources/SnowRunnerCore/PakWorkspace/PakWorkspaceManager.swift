@@ -914,8 +914,11 @@ public enum PakWorkspaceManager {
     }
 
     private static func isAutomaticallyMergedTarget(_ key: MappedTargetKey) -> Bool {
-        key.targetArchive == .initial
-            && key.internalName == ModCustomizationPreset.internalName
+        guard key.targetArchive == .initial else {
+            return false
+        }
+        return key.internalName == ModCustomizationPreset.internalName
+            || (key.internalName.hasPrefix("[strings]\\") && key.internalName.hasSuffix(".str"))
     }
 
     private static func pruneConflictResolutionsIfNeeded(

@@ -4,10 +4,10 @@ import XCTest
 final class RebuildLoadListPakTests: XCTestCase {
     func testRebuildLoadListPakPassesExistingPakVerifiers() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak() else {
-            throw XCTSkip("fixtures/shared.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak not present")
         }
         guard let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared_sound.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared_sound.pak not present")
         }
 
         let mixedRoot = try temporaryDirectory(named: "rebuild-root")
@@ -59,7 +59,7 @@ final class RebuildLoadListPakTests: XCTestCase {
 
     func testRebuildLoadListRequiresSharedSoundPak() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak() else {
-            throw XCTSkip("fixtures/shared.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak not present")
         }
         let mixedRoot = try temporaryDirectory(named: "rebuild-missing-shared-sound")
         let candidate = mixedRoot.deletingLastPathComponent().appendingPathComponent("rebuild.pak")
@@ -80,10 +80,10 @@ final class RebuildLoadListPakTests: XCTestCase {
 
     func testRebuildAddsControlledClsLoaderRecord() throws {
         guard let sharedPak = TestFixtures.optionalSharedPak() else {
-            throw XCTSkip("fixtures/shared.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared.pak not present")
         }
         guard let sharedSoundPak = TestFixtures.optionalSharedSoundPak() else {
-            throw XCTSkip("fixtures/shared_sound.pak not present")
+            throw XCTSkip("Tests/SnowRunnerCoreTests/Fixtures/shared_sound.pak not present")
         }
 
         let mixedRoot = try temporaryDirectory(named: "rebuild-add-one")

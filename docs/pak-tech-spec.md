@@ -11,8 +11,8 @@ Primary implementation references:
 - `initial.cache_block`: `Sources/SnowRunnerCore/CacheBlock/`
 - Mod merge semantics: `Sources/SnowRunnerCore/ModMerge/`
 - PCT companion headers: `Sources/SnowRunnerCore/ModMerge/PCTHeaderGenerator.swift`
-- Fixture archive: `fixtures/initial.pak`
-- PCT fixture: `fixtures/level_ru_02_03.pak`
+- Fixture archive: `Tests/SnowRunnerCoreTests/Fixtures/initial.pak`
+- PCT fixture: `Tests/SnowRunnerCoreTests/Fixtures/level_ru_02_03.pak`
 
 ## 1. `initial.pak` Layout
 
@@ -577,7 +577,7 @@ To generate `[textures]\pct\foo.pct_header`:
    `u32` value of `header_length`.
 
 The fixture test proves this rule against
-`fixtures/level_ru_02_03.pak`:
+`Tests/SnowRunnerCoreTests/Fixtures/level_ru_02_03.pak`:
 
 ```text
 [textures]\pct\level_ru_02_03_blend_map__cmp.pct
