@@ -4,10 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-INPUT_DIR="$SCRIPT_DIR/input"
-MODS_DIR="$SCRIPT_DIR/mods"
-OUTPUT_DIR="$SCRIPT_DIR/output"
-REPORTS_DIR="$SCRIPT_DIR/reports"
+INPUT_DIR="$ROOT_DIR/build/input"
+MODS_DIR="$ROOT_DIR/build/mods"
+OUTPUT_DIR="$ROOT_DIR/build/output"
+REPORTS_DIR="$ROOT_DIR/build/reports"
 
 INPUT_INITIAL="$INPUT_DIR/initial.pak"
 

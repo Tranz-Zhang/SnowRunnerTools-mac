@@ -1,14 +1,14 @@
 **/.DS_Store
 .build/
+.codex/
+.swiftpm/
 .vscode
 fixtures/shared_sound.pak
 fixtures/shared.pak
 Tests/SnowRunnerCoreTests/Fixtures/shared_sound.pak
 Tests/SnowRunnerCoreTests/Fixtures/shared.pak
 fixtures/output
-build/**/*.pak
-build/output/
-build/reports/
+build/
 workspace
 workspace_v2
 .superpowers

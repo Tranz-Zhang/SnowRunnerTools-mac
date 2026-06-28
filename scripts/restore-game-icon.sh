@@ -2,11 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_INITIAL_PAK="${BASE_INITIAL_PAK:-$SCRIPT_DIR/input/initial.pak}"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE_INITIAL_PAK="${BASE_INITIAL_PAK:-$ROOT_DIR/build/input/initial.pak}"
 
 usage() {
   cat <<'EOF'
-Usage: restore_game_icon.sh [--file-name <truck.xml>] <mod.pak> [output.pak]
+Usage: restore-game-icon.sh [--file-name <truck.xml>] <mod.pak> [output.pak]
 
 Restores truck icon fields from the original truck XML in build/input/initial.pak
 and removes unsupported ui/textures/*.png entries from the mod PAK.
