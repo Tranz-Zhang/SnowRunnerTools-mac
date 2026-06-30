@@ -105,7 +105,7 @@ xcrun stapler validate "$APP_PATH"
 
 spctl -a -vv "$APP_PATH"
 
-ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+ditto -c -k --norsrc --keepParent "$APP_PATH" "$ZIP_PATH"
 shasum -a 256 "$ZIP_PATH" > "$ZIP_PATH.sha256"
 
 echo "Published artifact:"
