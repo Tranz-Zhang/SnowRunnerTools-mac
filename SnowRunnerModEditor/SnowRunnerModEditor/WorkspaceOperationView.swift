@@ -87,19 +87,13 @@ public struct WorkspaceOperationView: View {
 
                 if !visibleMods.isEmpty {
                     ScrollView(.vertical) {
-                        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-//                            GridRow {
-//                                tableHeader("Enable")
-//                                tableHeader("Name")
-//                                Spacer()
-//                                tableHeader("")
-//                            }
-                            ForEach(visibleMods) { mod in
-                                modRow(mod)
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(visibleMods.enumerated()), id: \.element.id) { index, mod in
+                                modRow(mod, isStriped: index.isMultiple(of: 2))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 4)
+                        .padding(.trailing, 0)
                     }
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity, alignment: .topLeading)
                 } else {
@@ -143,8 +137,8 @@ public struct WorkspaceOperationView: View {
         Task { await viewModel.addMods(urls) }
     }
     
-    private func modRow(_ mod: PakWorkspaceModSummary) -> some View {
-        GridRow {
+    private func modRow(_ mod: PakWorkspaceModSummary, isStriped: Bool) -> some View {
+        HStack(spacing: 14) {
             Toggle("Enabled", isOn: modEnabledBinding(for: mod))
                 .toggleStyle(.switch)
                 .labelsHidden()
@@ -153,12 +147,15 @@ public struct WorkspaceOperationView: View {
             HStack(spacing: 8) {
                 Text(mod.folderName)
                     .font(.system(size: 15, weight: .regular))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     .textSelection(.enabled)
                 if viewModel.isNewMod(folderName: mod.folderName) {
                     newModBadge
                 }
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             HStack(spacing: 15) {
                 Button {
                     finder.reveal(mod.modDirectory)
@@ -180,7 +177,16 @@ public struct WorkspaceOperationView: View {
                 .help("Remove")
                 .accessibilityLabel("Remove \(mod.folderName)")
             }.padding(.trailing, 20)
-        }.frame(height: 30)
+        }
+        .padding(.leading, 8)
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+        .background {
+            if isStriped {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(nsColor: .init(white: 0.96, alpha: 1)))
+                    
+            }
+        }
     }
 
     private func modEnabledBinding(for mod: PakWorkspaceModSummary) -> Binding<Bool> {
