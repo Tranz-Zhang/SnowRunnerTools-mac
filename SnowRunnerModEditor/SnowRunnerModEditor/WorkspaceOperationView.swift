@@ -85,7 +85,7 @@ public struct WorkspaceOperationView: View {
 
                 Divider()
 
-                if let mods = viewModel.summary?.mods, !mods.isEmpty {
+                if !visibleMods.isEmpty {
                     ScrollView(.vertical) {
                         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
 //                            GridRow {
@@ -94,7 +94,7 @@ public struct WorkspaceOperationView: View {
 //                                Spacer()
 //                                tableHeader("")
 //                            }
-                            ForEach(mods) { mod in
+                            ForEach(visibleMods) { mod in
                                 modRow(mod)
                             }
                         }
@@ -118,6 +118,24 @@ public struct WorkspaceOperationView: View {
         return "\(active) active, \(disabled) disabled"
     }
 
+    private var visibleMods: [PakWorkspaceModSummary] {
+        viewModel.modsSortedByName
+    }
+
+    private var newModBadge: some View {
+        Text("NEW")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.green)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.green.opacity(0.10), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.green.opacity(0.35))
+            }
+            .accessibilityLabel("New")
+    }
+
     
     private func addMods() {
         let urls = panels.chooseModPaks()
@@ -132,9 +150,14 @@ public struct WorkspaceOperationView: View {
                 .labelsHidden()
                 .disabled(viewModel.isBusy)
                 .accessibilityLabel("Enable \(mod.folderName)")
-            Text(mod.folderName)
-                .font(.system(size: 15, weight: .regular))
-                .textSelection(.enabled)
+            HStack(spacing: 8) {
+                Text(mod.folderName)
+                    .font(.system(size: 15, weight: .regular))
+                    .textSelection(.enabled)
+                if viewModel.isNewMod(folderName: mod.folderName) {
+                    newModBadge
+                }
+            }
             Spacer()
             HStack(spacing: 15) {
                 Button {
@@ -330,13 +353,14 @@ private enum WorkspaceOperationPreview {
             workspace: workspace,
             initialSourcePath: "/Applications/SnowRunner/preload/paks/client/initial.pak",
             mods: [
-                modSummary(folderName: "azov-tuning-pack", archiveName: "azov_tuning.pak", workspace: workspace, enabled: true),
+                modSummary(folderName: "old-truck-addon", archiveName: "old_truck_addon.pak", workspace: workspace, enabled: false),
                 modSummary(folderName: "loadstar-rescue-kit", archiveName: "loadstar_rescue.pak", workspace: workspace, enabled: true),
-                modSummary(folderName: "old-truck-addon", archiveName: "old_truck_addon.pak", workspace: workspace, enabled: false)
+                modSummary(folderName: "azov-tuning-pack", archiveName: "azov_tuning.pak", workspace: workspace, enabled: true)
             ],
             buildInitialPak: workspace.appendingPathComponent("build/initial.pak"),
             buildReport: workspace.appendingPathComponent("build/workspace-build-report.md")
         )
+        model.newModFolderNames = ["loadstar-rescue-kit"]
         model.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [
             WorkspaceModConflict(
                 targetArchive: .initial,

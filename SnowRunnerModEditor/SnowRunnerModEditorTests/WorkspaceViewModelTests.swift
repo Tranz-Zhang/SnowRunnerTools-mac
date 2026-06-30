@@ -242,6 +242,107 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(service.quickVerifyCalls, 2)
     }
 
+    func testModsSortedByNameUsesCaseInsensitiveLocalizedOrder() {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let model = WorkspaceViewModel(service: FakeWorkspaceService())
+        model.summary = summary(workspace: workspace, mods: [
+            modSummary(folderName: "zebra-pack", archiveName: "zebra.pak", workspace: workspace),
+            modSummary(folderName: "Alpha-Pack", archiveName: "alpha.pak", workspace: workspace),
+            modSummary(folderName: "beta-pack", archiveName: "beta.pak", workspace: workspace)
+        ])
+
+        XCTAssertEqual(model.modsSortedByName.map(\.folderName), [
+            "Alpha-Pack",
+            "beta-pack",
+            "zebra-pack"
+        ])
+    }
+
+    func testAddModsMarksOnlyNewlyAddedFolderNames() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [
+            modSummary(folderName: "existing", archiveName: "existing.pak", workspace: workspace)
+        ])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+
+        service.summary = summary(workspace: workspace, mods: [
+            modSummary(folderName: "existing", archiveName: "existing.pak", workspace: workspace),
+            modSummary(folderName: "new-alpha", archiveName: "new-alpha.pak", workspace: workspace),
+            modSummary(folderName: "new-beta", archiveName: "new-beta.pak", workspace: workspace)
+        ])
+        await model.addMods([
+            URL(fileURLWithPath: "/mods/new-alpha.pak"),
+            URL(fileURLWithPath: "/mods/new-beta.pak")
+        ])
+        await waitForQuickVerify()
+
+        XCTAssertFalse(model.isNewMod(folderName: "existing"))
+        XCTAssertTrue(model.isNewMod(folderName: "new-alpha"))
+        XCTAssertTrue(model.isNewMod(folderName: "new-beta"))
+    }
+
+    func testOpeningAndClosingWorkspaceClearsNewModMarkers() async throws {
+        let firstWorkspace = URL(fileURLWithPath: "/tmp/first-workspace", isDirectory: true)
+        let secondWorkspace = URL(fileURLWithPath: "/tmp/second-workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: firstWorkspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(firstWorkspace)
+        await waitForQuickVerify()
+
+        service.summary = summary(workspace: firstWorkspace, mods: [
+            modSummary(folderName: "new-alpha", archiveName: "new-alpha.pak", workspace: firstWorkspace)
+        ])
+        await model.addMods([URL(fileURLWithPath: "/mods/new-alpha.pak")])
+        await waitForQuickVerify()
+        XCTAssertTrue(model.isNewMod(folderName: "new-alpha"))
+
+        service.summary = summary(workspace: secondWorkspace, mods: [
+            modSummary(folderName: "new-alpha", archiveName: "new-alpha.pak", workspace: secondWorkspace)
+        ])
+        await model.openWorkspace(secondWorkspace)
+        await waitForQuickVerify()
+        XCTAssertFalse(model.isNewMod(folderName: "new-alpha"))
+
+        service.summary = summary(workspace: secondWorkspace, mods: [
+            modSummary(folderName: "new-beta", archiveName: "new-beta.pak", workspace: secondWorkspace)
+        ])
+        await model.addMods([URL(fileURLWithPath: "/mods/new-beta.pak")])
+        await waitForQuickVerify()
+        XCTAssertTrue(model.isNewMod(folderName: "new-beta"))
+
+        model.closeWorkspace()
+        XCTAssertFalse(model.isNewMod(folderName: "new-beta"))
+    }
+
+    func testRemoveModPrunesNewModMarker() async throws {
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let service = FakeWorkspaceService()
+        service.summary = summary(workspace: workspace, mods: [])
+        service.quickVerifyResult = WorkspaceQuickVerifyResult(conflicts: [])
+        let model = WorkspaceViewModel(service: service)
+        await model.openWorkspace(workspace)
+        await waitForQuickVerify()
+
+        service.summary = summary(workspace: workspace, mods: [
+            modSummary(folderName: "new-alpha", archiveName: "new-alpha.pak", workspace: workspace)
+        ])
+        await model.addMods([URL(fileURLWithPath: "/mods/new-alpha.pak")])
+        await waitForQuickVerify()
+        XCTAssertTrue(model.isNewMod(folderName: "new-alpha"))
+
+        service.summary = summary(workspace: workspace, mods: [])
+        await model.removeMod(folderName: "new-alpha")
+        await waitForQuickVerify()
+
+        XCTAssertFalse(model.isNewMod(folderName: "new-alpha"))
+    }
+
     func testAddModsClearsPreviousBuildResult() async {
         let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
         let service = FakeWorkspaceService()
@@ -414,6 +515,22 @@ final class WorkspaceViewModelTests: XCTestCase {
             buildInitialPak: workspace.appendingPathComponent("build/initial.pak"),
             buildReport: workspace.appendingPathComponent("build/workspace-build-report.md"),
             buildOutput: buildOutput
+        )
+    }
+
+    private func modSummary(
+        folderName: String,
+        archiveName: String,
+        workspace: URL,
+        enabled: Bool = true
+    ) -> PakWorkspaceModSummary {
+        PakWorkspaceModSummary(
+            folderName: folderName,
+            archiveName: archiveName,
+            sourcePath: "/mods/\(archiveName)",
+            modDirectory: workspace.appendingPathComponent("mods/\(folderName)", isDirectory: true),
+            sourceCache: workspace.appendingPathComponent(".snowrunner/sources/\(archiveName)"),
+            enabled: enabled
         )
     }
 

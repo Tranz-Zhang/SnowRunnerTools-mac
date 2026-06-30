@@ -33,6 +33,7 @@ public final class WorkspaceViewModel {
     public var errorMessage: String?
     public var buildResult: ModMergeResult?
     public var recentWorkspaces: [URL]
+    public var newModFolderNames: Set<String> = []
 
     public init(
         service: WorkspaceAppServicing = WorkspaceAppService(),
@@ -55,7 +56,18 @@ public final class WorkspaceViewModel {
         summary?.buildOutput?.modifiedAt
     }
 
+    public var modsSortedByName: [PakWorkspaceModSummary] {
+        (summary?.mods ?? []).sorted { lhs, rhs in
+            lhs.folderName.localizedCaseInsensitiveCompare(rhs.folderName) == .orderedAscending
+        }
+    }
+
+    public func isNewMod(folderName: String) -> Bool {
+        newModFolderNames.contains(folderName)
+    }
+
     public func createWorkspace(workspace: URL, initialPak: URL) async {
+        newModFolderNames = []
         let access = recentWorkspaceStore.startAccessing(workspace)
         await runWorkspaceMutation(
             .creatingWorkspace,
@@ -68,6 +80,7 @@ public final class WorkspaceViewModel {
 
     public func openWorkspace(_ workspace: URL) async {
         cancelQuickVerify()
+        newModFolderNames = []
         let access = recentWorkspaceStore.startAccessing(workspace)
         busyState = .openingWorkspace
         errorMessage = nil
@@ -104,6 +117,7 @@ public final class WorkspaceViewModel {
         quickVerifyResult = nil
         buildResult = nil
         errorMessage = nil
+        newModFolderNames = []
         busyState = .idle
         screen = .launch
     }
@@ -125,9 +139,12 @@ public final class WorkspaceViewModel {
 
     public func addMods(_ modPaks: [URL]) async {
         guard let workspace = summary?.workspace, !modPaks.isEmpty else { return }
+        let existingFolderNames = Set(summary?.mods.map(\.folderName) ?? [])
         await runWorkspaceMutation(.addingMods) {
             try await service.addModPackages(workspace: workspace, packages: modPaks)
         }
+        let currentFolderNames = Set(summary?.mods.map(\.folderName) ?? [])
+        newModFolderNames.formUnion(currentFolderNames.subtracting(existingFolderNames))
     }
 
     public func setModEnabled(folderName: String, enabled: Bool) async {
@@ -141,6 +158,10 @@ public final class WorkspaceViewModel {
         guard let workspace = summary?.workspace else { return }
         await runWorkspaceMutation(.updatingMod) {
             try await service.removeMod(workspace: workspace, folderName: folderName)
+        }
+        let stillExists = summary?.mods.contains { $0.folderName == folderName } ?? false
+        if !stillExists {
+            newModFolderNames.remove(folderName)
         }
     }
 
