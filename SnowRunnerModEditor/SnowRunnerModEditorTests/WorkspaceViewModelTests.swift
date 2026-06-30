@@ -47,7 +47,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 
     func testOpenInvalidWorkspaceStaysOnLaunchScreen() async {
         let service = FakeWorkspaceService()
-        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/.snowrunner-workspace.json")
+        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/snowrunner-workspace.json")
         let model = WorkspaceViewModel(service: service)
 
         await model.openWorkspace(URL(fileURLWithPath: "/tmp/bad", isDirectory: true))
@@ -93,7 +93,7 @@ final class WorkspaceViewModelTests: XCTestCase {
     func testOpenInvalidWorkspaceDoesNotRecordRecentWorkspace() async {
         let workspace = URL(fileURLWithPath: "/tmp/bad", isDirectory: true)
         let service = FakeWorkspaceService()
-        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/.snowrunner-workspace.json")
+        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/snowrunner-workspace.json")
         let store = makeRecentWorkspaceStore()
         let model = WorkspaceViewModel(service: service, recentWorkspaceStore: store)
 
@@ -203,7 +203,7 @@ final class WorkspaceViewModelTests: XCTestCase {
         let model = WorkspaceViewModel(service: service)
 
         await model.openWorkspace(workspace)
-        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/.snowrunner-workspace.json")
+        service.openWorkspaceError = PakWorkspaceError.missingManifest("/tmp/bad/snowrunner-workspace.json")
         await model.openWorkspace(URL(fileURLWithPath: "/tmp/bad", isDirectory: true))
 
         try? await Task.sleep(nanoseconds: 100_000_000)

@@ -26,7 +26,7 @@ In scope:
 - Workspace creation from a selected `initial.pak` and an explicitly selected
   destination folder.
 - Workspace opening by selecting a folder that contains a valid
-  `.snowrunner-workspace.json`.
+  `snowrunner-workspace.json`.
 - Add mod PAKs to the workspace.
 - Disable and re-enable mods.
 - Remove mods from the workspace.
@@ -62,7 +62,7 @@ Actions:
   - Enter the workspace screen on success.
 - `Open Existing Workspace Folder`
   - Select a folder.
-  - Load `.snowrunner-workspace.json`.
+  - Load `snowrunner-workspace.json`.
   - Fail clearly if the selected folder is not a valid workspace.
 
 No mod, verify, or build controls appear until a workspace is open.
@@ -148,7 +148,7 @@ Remove behavior:
 
 - Delete `mods/<name>/`.
 - Delete `.snowrunner/sources/<name>.pak`.
-- Remove the mod from `.snowrunner-workspace.json`.
+- Remove the mod from `snowrunner-workspace.json`.
 - Apply the filesystem changes and manifest update transactionally as far as
   Foundation file APIs allow.
 

@@ -132,7 +132,7 @@ public struct PakWorkspacePolicy: Codable, Equatable {
 }
 
 public enum PakWorkspacePaths {
-    public static let manifestName = ".snowrunner-workspace.json"
+    public static let manifestName = "snowrunner-workspace.json"
     public static let initialDirectoryName = "initial"
     public static let modsDirectoryName = "mods"
     public static let metadataDirectoryName = ".snowrunner"

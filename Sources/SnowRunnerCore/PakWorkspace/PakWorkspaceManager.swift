@@ -988,7 +988,7 @@ public enum PakWorkspaceManager {
         rollback: () -> Void
     ) throws {
         let manifestURL = PakWorkspacePaths.manifestURL(root: workspace)
-        let tempManifest = workspace.appendingPathComponent(".snowrunner-workspace-\(UUID().uuidString).json")
+        let tempManifest = workspace.appendingPathComponent("snowrunner-workspace-\(UUID().uuidString).json")
         let data = try JSONEncoder.pakWorkspace.encode(manifest)
         try data.write(to: tempManifest, options: .atomic)
         do {

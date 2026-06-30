@@ -117,7 +117,7 @@ failure, the launch screen remains visible and the error message is displayed.
 
 ### Open Workspace
 
-Opening a workspace loads `.snowrunner-workspace.json` through
+Opening a workspace loads `snowrunner-workspace.json` through
 `PakWorkspaceManager.summary`. The selected folder must be a valid workspace.
 Invalid folders, unsupported manifest versions, and decode failures are
 blocking errors.
@@ -270,7 +270,7 @@ keep blocking library work behind the service boundary.
 
 These rules are more important than the current UI shape:
 
-- `.snowrunner-workspace.json` is the source of truth for registered mods.
+- `snowrunner-workspace.json` is the source of truth for registered mods.
 - Missing `enabled` means enabled for backward compatibility.
 - Disabled mods remain in their existing folders and caches.
 - Enabled mods must have both an editable mod directory and cached source PAK.

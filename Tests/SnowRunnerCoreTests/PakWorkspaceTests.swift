@@ -86,12 +86,31 @@ final class PakWorkspaceTests: XCTestCase {
     func testWorkspacePathsAreStable() {
         let root = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
 
-        XCTAssertEqual(PakWorkspacePaths.manifestURL(root: root).path, "/tmp/workspace/.snowrunner-workspace.json")
+        XCTAssertEqual(PakWorkspacePaths.manifestURL(root: root).path, "/tmp/workspace/snowrunner-workspace.json")
         XCTAssertEqual(PakWorkspacePaths.initialDirectory(root: root).path, "/tmp/workspace/initial")
         XCTAssertEqual(PakWorkspacePaths.modsDirectory(root: root).path, "/tmp/workspace/mods")
         XCTAssertEqual(PakWorkspacePaths.buildInitialPak(root: root).path, "/tmp/workspace/build/initial.pak")
         XCTAssertEqual(PakWorkspacePaths.buildReport(root: root).path, "/tmp/workspace/build/workspace-build-report.md")
         XCTAssertEqual(PakWorkspacePaths.sourceCache(root: root, folderName: "demo").path, "/tmp/workspace/.snowrunner/sources/demo.pak")
+    }
+
+    func testWorkspaceLoadRejectsHiddenOnlyManifest() throws {
+        let workspace = try temporaryDirectory(named: "workspace-hidden-manifest")
+        let hiddenManifestURL = workspace.appendingPathComponent(".snowrunner-workspace.json")
+        let manifest = PakWorkspaceManifest(
+            version: 1,
+            initialSourcePath: "/game/initial.pak",
+            mods: [],
+            policy: PakWorkspacePolicy(textureMode: "inlineInitial", allowInitialOverwrite: true)
+        )
+        try JSONEncoder.pakWorkspace.encode(manifest).write(to: hiddenManifestURL)
+
+        XCTAssertThrowsError(try PakWorkspaceManager.loadManifest(workspace: workspace)) { error in
+            XCTAssertEqual(
+                error as? PakWorkspaceError,
+                .missingManifest(workspace.appendingPathComponent("snowrunner-workspace.json").path)
+            )
+        }
     }
 
     func testWorkspaceInitialLoadListBuilderPreservesNonInitialRecordsAndAddsMeshAsInitial() throws {

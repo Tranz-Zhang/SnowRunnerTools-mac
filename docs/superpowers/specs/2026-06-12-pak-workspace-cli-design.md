@@ -27,7 +27,7 @@ In scope:
   - `mods/<name>/` stores unpacked mod package contents.
   - `.snowrunner/sources/` stores cached source PAKs for metadata reuse.
   - `build/` stores generated outputs.
-- Workspace metadata in `.snowrunner-workspace.json`.
+- Workspace metadata in `snowrunner-workspace.json`.
 - Automatic mod folder naming from each PAK basename without `.pak`.
 - Rejection of duplicate mod folder names.
 - `--verify` as a real temporary build plus verifier run.
@@ -94,7 +94,7 @@ Example layout:
 
 ```text
 workspace/
-  .snowrunner-workspace.json
+  snowrunner-workspace.json
   initial/
     pak.load_list
     initial.cache_block
@@ -138,7 +138,7 @@ verification. The build pipeline must not read source inputs from `build/`.
 Store metadata in:
 
 ```text
-workspace/.snowrunner-workspace.json
+workspace/snowrunner-workspace.json
 ```
 
 V1 shape:
@@ -197,9 +197,9 @@ Workspace mutations must be all-or-nothing.
 - Unpack the source PAK into a temporary sibling of `initial/`.
 - Write the new manifest to a temporary file.
 - Commit by moving the temporary initial folder into place and atomically
-  replacing `.snowrunner-workspace.json`.
+  replacing `snowrunner-workspace.json`.
 - Commit the manifest last. A workspace is considered initialized only after
-  `.snowrunner-workspace.json` points at committed folders.
+  `snowrunner-workspace.json` points at committed folders.
 - If any step fails before commit, remove temporary files and leave the existing
   workspace unchanged.
 
@@ -236,7 +236,7 @@ Crash tolerance:
 Rules:
 
 - Create the workspace directory if needed.
-- Create or update `.snowrunner-workspace.json`.
+- Create or update `snowrunner-workspace.json`.
 - Unpack the source PAK into `initial/` using `PakUnpacker`.
 - Record `initialSourcePath`.
 - Reject an existing non-empty `initial/`.
